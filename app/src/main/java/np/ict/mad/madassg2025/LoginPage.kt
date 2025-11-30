@@ -30,6 +30,8 @@ class LoginPage : ComponentActivity() {
     }
 }
 
+// Test commit to verify Git is working
+
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
     Text(
