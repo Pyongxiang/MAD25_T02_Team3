@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "313330340190",
+    "project_id": "np-ict-mad-madassg2025",
+    "storage_bucket": "np-ict-mad-madassg2025.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:313330340190:android:b5bbea34ea9819e339ffcf",
+        "android_client_info": {
+          "package_name": "np.ict.mad.madassg2025"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALEZ-7gGx2142KDOk2S7L92ctsxdho7bk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
