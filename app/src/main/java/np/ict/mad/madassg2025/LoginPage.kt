@@ -36,6 +36,19 @@ fun LoginPage() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Button(
+                onClick = {
+                    val intent = Intent(context, HomePage::class.java)
+                    context.startActivity(intent)
+                },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+            ) {
+                Text("Home")
+            }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -161,4 +174,4 @@ fun LoginPage() {
             )
         }
     }
-}
+}}
