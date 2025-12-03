@@ -36,23 +36,25 @@ fun LoginPage() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            Button(
-                onClick = {
-                    val intent = Intent(context, HomePage::class.java)
-                    context.startActivity(intent)
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-            ) {
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Button(onClick = {
+                val intent = Intent(context, HomePage::class.java)
+                context.startActivity(intent)
+            }) {
                 Text("Home")
             }
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp), // Added padding for better look
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -174,4 +176,4 @@ fun LoginPage() {
             )
         }
     }
-}}
+}
