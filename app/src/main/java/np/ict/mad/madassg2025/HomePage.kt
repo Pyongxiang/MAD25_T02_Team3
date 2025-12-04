@@ -39,7 +39,9 @@ class HomePage : ComponentActivity() {
             if (isGranted) {
                 fetchLocation()
             } else {
-                onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
+                onLocationTextChanged?.invoke(
+                    "Permission denied.\nPlease allow location to use this feature."
+                )
             }
         }
 
@@ -53,10 +55,28 @@ class HomePage : ComponentActivity() {
             var locationText by remember { mutableStateOf("Location not fetched yet") }
             var hasLocation by remember { mutableStateOf(false) }
 
+            // 🔹 State for Current Weather feature (city-based)
+            var weatherText by remember { mutableStateOf("Weather not loaded yet") }
+
             onLocationTextChanged = { newText ->
                 locationText = newText
                 // treat anything starting with "Location:" as a successful fetch
                 hasLocation = newText.startsWith("Location:")
+            }
+
+            // Call OpenWeather (Current Weather Data) once when screen loads
+            LaunchedEffect(Unit) {
+                weatherText = "Loading weather..."
+                try {
+                    // Default city – you can change this or later link to location
+                    val response = WeatherRepository.getCurrentWeather("Singapore")
+                    val temp = response.main.temp
+                    val desc = response.weather.firstOrNull()?.description ?: "No description"
+
+                    weatherText = "Singapore: ${temp}°C, $desc"
+                } catch (e: Exception) {
+                    weatherText = "Error loading weather: ${e.message ?: "Unknown error"}"
+                }
             }
 
             Surface(
@@ -73,7 +93,17 @@ class HomePage : ComponentActivity() {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
-                        // Card-style box to show current location text
+                        // --- Header / Title ---
+
+
+                        // --- Current Weather Section ---
+                        Text(text = "Current Weather", color = Color.White)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(text = weatherText, color = Color.White)
+
+                        Spacer(modifier = Modifier.height(32.dp))
+
+                        // --- Location Card ---
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -159,11 +189,9 @@ class HomePage : ComponentActivity() {
 
                 val displayName = oneMapName ?: geocoderName ?: "Unknown location"
 
-                // Show both the resolved name and raw coordinates for debugging
+                // Show both the resolved name and raw coordinates
                 val text = "Location: $displayName\n($lat, $lon)"
                 onLocationTextChanged?.invoke(text)
-
-                // 👉 Later: you can call a weather API here using lat & lon.
 
             } else {
                 onLocationTextChanged?.invoke(
