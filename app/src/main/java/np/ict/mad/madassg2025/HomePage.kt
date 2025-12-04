@@ -29,8 +29,11 @@ class HomePage : ComponentActivity() {
 
     private lateinit var locationHelper: LocationHelper
 
+    // callback to update the location text from fetchLocation()
     private var onLocationTextChanged: ((String) -> Unit)? = null
-    private var weatherText by mutableStateOf("Weather not available")  // Declare weatherText here
+
+    // this is only used INSIDE setContent
+    private var weatherText by mutableStateOf("Weather not available")
 
     // Register for location permission request
     private val locationPermissionLauncher =
@@ -38,8 +41,10 @@ class HomePage : ComponentActivity() {
             if (isGranted) {
                 fetchLocation() // Permission granted, fetch location
             } else {
-                onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
-                Log.d("LocationPermission", "Permission NOT granted") // Log permission denial
+                onLocationTextChanged?.invoke(
+                    "Permission denied.\nPlease allow location to use this feature."
+                )
+                Log.d("LocationPermission", "Permission NOT granted")
             }
         }
 
@@ -52,9 +57,25 @@ class HomePage : ComponentActivity() {
             var locationText by remember { mutableStateOf("Location not fetched yet") }
             var hasLocation by remember { mutableStateOf(false) }
 
+            // expose state holder to fetchLocation()
             onLocationTextChanged = { newText ->
                 locationText = newText
                 hasLocation = newText.startsWith("Location:")
+            }
+
+            // 🔹 Use YOUR Retrofit WeatherRepository here
+            LaunchedEffect(Unit) {
+                weatherText = "Loading weather..."
+                try {
+                    // Stage 1 requirement: use city name
+                    val response = WeatherRepository.getCurrentWeather("Singapore")
+                    val temp = response.main.temp
+                    val desc = response.weather.firstOrNull()?.description ?: "No description"
+                    weatherText = "Singapore: ${temp}°C, $desc"
+                } catch (e: Exception) {
+                    Log.e("HomePage", "Error loading weather", e)
+                    weatherText = "Error loading weather: ${e.message ?: "Unknown error"}"
+                }
             }
 
             Surface(
@@ -71,6 +92,7 @@ class HomePage : ComponentActivity() {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
+                        // --- Location card ---
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -85,7 +107,7 @@ class HomePage : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // Display weather text here
+                        // --- Current Weather (from WeatherRepository) ---
                         Text(
                             text = weatherText,
                             color = Color.White,
@@ -97,7 +119,6 @@ class HomePage : ComponentActivity() {
                         if (!hasLocation) {
                             Button(
                                 onClick = {
-                                    // Check if permission is granted before attempting to fetch location
                                     val status = ContextCompat.checkSelfPermission(
                                         this@HomePage,
                                         Manifest.permission.ACCESS_FINE_LOCATION
@@ -122,7 +143,6 @@ class HomePage : ComponentActivity() {
     }
 
     private fun fetchLocation() {
-        // Log permission status to check if permission is granted
         val status = ContextCompat.checkSelfPermission(
             this@HomePage,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -160,8 +180,8 @@ class HomePage : ComponentActivity() {
                         if (!addresses.isNullOrEmpty()) {
                             val addr = addresses[0]
                             listOfNotNull(
-                                addr.subLocality,   // neighbourhood
-                                addr.locality,      // usually "Singapore"
+                                addr.subLocality,
+                                addr.locality,
                                 addr.subAdminArea,
                                 addr.adminArea,
                                 addr.countryName
@@ -175,15 +195,8 @@ class HomePage : ComponentActivity() {
                     val locationText = "Location: $displayName\n($lat, $lon)"
                     onLocationTextChanged?.invoke(locationText)
 
-                    // Fetch weather and update weatherText
-                    val weatherInfo = try {
-                        WeatherClient.getWeather(lat, lon)
-                    } catch (e: Exception) {
-                        Log.e("HomePage", "Error fetching weather data: ${e.message}")
-                        null
-                    }
-
-                    weatherText = weatherInfo ?: "Weather data not available"
+                    // 🔸 NOTE: we no longer call WeatherClient here.
+                    // Your weather comes from WeatherRepository via city name.
 
                 } else {
                     onLocationTextChanged?.invoke(
@@ -192,7 +205,6 @@ class HomePage : ComponentActivity() {
                 }
             }
         } else {
-            // Log if permission is not granted
             Log.d("LocationPermission", "Permission NOT granted")
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }

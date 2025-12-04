@@ -8,7 +8,7 @@ object WeatherRepository {
     private const val BASE_URL = "https://api.openweathermap.org/"
 
     // Simple direct API key (ok for school/private repo)
-    private const val API_KEY = "your_api_key_here"
+    private const val API_KEY = "enter_your_api_here"
 
     private val api: WeatherApiService by lazy {
         Retrofit.Builder()
