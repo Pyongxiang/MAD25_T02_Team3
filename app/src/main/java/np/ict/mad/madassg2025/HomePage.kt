@@ -12,12 +12,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -31,9 +33,6 @@ class HomePage : ComponentActivity() {
 
     // callback to update the location text from fetchLocation()
     private var onLocationTextChanged: ((String) -> Unit)? = null
-
-    // this is only used INSIDE setContent
-    private var weatherText by mutableStateOf("Weather not available")
 
     // Register for location permission request
     private val locationPermissionLauncher =
@@ -54,27 +53,35 @@ class HomePage : ComponentActivity() {
         locationHelper = LocationHelper(applicationContext)
 
         setContent {
+            // --------- Location state (friend's feature) ----------
             var locationText by remember { mutableStateOf("Location not fetched yet") }
             var hasLocation by remember { mutableStateOf(false) }
 
-            // expose state holder to fetchLocation()
             onLocationTextChanged = { newText ->
                 locationText = newText
                 hasLocation = newText.startsWith("Location:")
             }
 
-            // 🔹 Use YOUR Retrofit WeatherRepository here
+            // --------- Current Weather state (your feature) ----------
+            var weatherCity by remember { mutableStateOf("Singapore") }
+            var weatherTemp by remember { mutableStateOf<Double?>(null) }
+            var weatherCondition by remember { mutableStateOf<String?>(null) }
+            var weatherError by remember { mutableStateOf<String?>(null) }
+
+            // Call your Retrofit WeatherRepository once when screen loads
             LaunchedEffect(Unit) {
-                weatherText = "Loading weather..."
+                weatherError = null
+                weatherTemp = null
+                weatherCondition = null
+
                 try {
-                    // Stage 1 requirement: use city name
                     val response = WeatherRepository.getCurrentWeather("Singapore")
-                    val temp = response.main.temp
-                    val desc = response.weather.firstOrNull()?.description ?: "No description"
-                    weatherText = "Singapore: ${temp}°C, $desc"
+                    weatherCity = response.name
+                    weatherTemp = response.main.temp
+                    weatherCondition = response.weather.firstOrNull()?.description
                 } catch (e: Exception) {
                     Log.e("HomePage", "Error loading weather", e)
-                    weatherText = "Error loading weather: ${e.message ?: "Unknown error"}"
+                    weatherError = e.message ?: "Unknown error"
                 }
             }
 
@@ -90,9 +97,66 @@ class HomePage : ComponentActivity() {
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
 
-                        // --- Location card ---
+                        // -------- Current Weather section (now at the top) --------
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Current Weather",
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+
+                            when {
+                                weatherError != null -> {
+                                    Text(
+                                        text = "Error loading weather: $weatherError",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+
+                                weatherTemp == null || weatherCondition == null -> {
+                                    Text(
+                                        text = "Loading weather...",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+
+                                else -> {
+                                    // City name
+                                    Text(
+                                        text = weatherCity,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    // Big temperature
+                                    Text(
+                                        text = "${weatherTemp!!.toInt()}°C",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.displaySmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    // Condition (e.g. "light rain" → "Light rain")
+                                    Text(
+                                        text = weatherCondition!!
+                                            .replaceFirstChar { it.uppercase() },
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+
+                        // -------- Location card (now below weather) --------
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -101,21 +165,12 @@ class HomePage : ComponentActivity() {
                         ) {
                             Text(
                                 text = locationText,
-                                color = Color.White
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // --- Current Weather (from WeatherRepository) ---
-                        Text(
-                            text = weatherText,
-                            color = Color.White,
-                            modifier = Modifier.padding(16.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
+                        // -------- Use My Location button --------
                         if (!hasLocation) {
                             Button(
                                 onClick = {
@@ -195,8 +250,7 @@ class HomePage : ComponentActivity() {
                     val locationText = "Location: $displayName\n($lat, $lon)"
                     onLocationTextChanged?.invoke(locationText)
 
-                    // 🔸 NOTE: we no longer call WeatherClient here.
-                    // Your weather comes from WeatherRepository via city name.
+                    // Weather still comes from WeatherRepository via city name (above)
 
                 } else {
                     onLocationTextChanged?.invoke(
