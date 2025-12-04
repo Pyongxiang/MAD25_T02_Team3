@@ -16,18 +16,17 @@ class LocationHelper(private val context: Context) {
     @SuppressLint("MissingPermission")
     suspend fun getLastKnownLocation(): Location? =
         suspendCancellableCoroutine { cont ->
-            // 1️⃣ First try the cached last location
+            // 1️⃣ Try cached location first
             client.lastLocation
                 .addOnSuccessListener { location ->
                     if (location != null) {
                         cont.resume(location)
                     } else {
-                        // 2️⃣ If null, request a fresh current location
+                        // 2️⃣ If no cache, request a live fix
                         requestCurrentLocation(cont)
                     }
                 }
                 .addOnFailureListener {
-                    // If lastLocation fails, also try current location
                     requestCurrentLocation(cont)
                 }
         }
@@ -47,7 +46,6 @@ class LocationHelper(private val context: Context) {
             cont.resume(null)
         }
 
-        // Cancel the request if the coroutine is cancelled
         cont.invokeOnCancellation {
             cts.cancel()
         }

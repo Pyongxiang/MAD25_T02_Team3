@@ -28,7 +28,6 @@ object OneMapClient {
                     requestMethod = "GET"
                     connectTimeout = 10_000
                     readTimeout = 10_000
-                    // OneMap auth header
                     setRequestProperty("Authorization", "Bearer $ONE_MAP_TOKEN")
                 }
 
@@ -58,7 +57,7 @@ object OneMapClient {
                 val block = obj.optString("BLOCK").takeIf { it.isNotBlank() }
 
                 return@withContext when {
-                    buildingName != null -> buildingName           // e.g. "NGEE ANN POLYTECHNIC"
+                    buildingName != null -> buildingName
                     block != null && road != null -> "$block $road"
                     road != null -> road
                     else -> null

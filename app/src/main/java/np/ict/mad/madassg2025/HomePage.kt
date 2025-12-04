@@ -28,7 +28,10 @@ class HomePage : ComponentActivity() {
 
     private lateinit var locationHelper: LocationHelper
 
-    // System permission dialog launcher
+    // Callback to update the Compose UI text from fetchLocation()
+    private var onLocationTextChanged: ((String) -> Unit)? = null
+
+    // Launcher for the system location permission dialog
     private val locationPermissionLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -36,12 +39,9 @@ class HomePage : ComponentActivity() {
             if (isGranted) {
                 fetchLocation()
             } else {
-                onLocationTextChanged?.invoke("Permission denied")
+                onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
             }
         }
-
-    // Callback to update the Compose UI from fetchLocation()
-    private var onLocationTextChanged: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,13 +55,14 @@ class HomePage : ComponentActivity() {
 
             onLocationTextChanged = { newText ->
                 locationText = newText
+                // treat anything starting with "Location:" as a successful fetch
                 hasLocation = newText.startsWith("Location:")
             }
 
             Surface(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF101820)), // dark background
+                    .background(Color(0xFF101820)),
                 color = Color.Transparent
             ) {
                 Box(
@@ -72,11 +73,11 @@ class HomePage : ComponentActivity() {
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
-                        // Card-style area for the location text
+                        // Card-style box to show current location text
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0x331CFFFFFF)) // translucent white
+                                .background(Color(0x331CFFFFFF))
                                 .padding(vertical = 24.dp, horizontal = 20.dp)
                         ) {
                             Text(
@@ -87,26 +88,26 @@ class HomePage : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // Show button only until we’ve successfully fetched a location
+                        // Show button only until we get a valid location
                         if (!hasLocation) {
-                            Button(onClick = {
-                                // 1. Check if permission is already granted
-                                val permissionStatus =
-                                    ContextCompat.checkSelfPermission(
+                            Button(
+                                onClick = {
+                                    val status = ContextCompat.checkSelfPermission(
                                         activity,
                                         Manifest.permission.ACCESS_FINE_LOCATION
                                     )
 
-                                if (permissionStatus == PackageManager.PERMISSION_GRANTED) {
-                                    // No popup needed, just fetch
-                                    activity.fetchLocation()
-                                } else {
-                                    // This triggers the Android system dialog
-                                    activity.locationPermissionLauncher.launch(
-                                        Manifest.permission.ACCESS_FINE_LOCATION
-                                    )
+                                    if (status == PackageManager.PERMISSION_GRANTED) {
+                                        // Already granted – no popup, just fetch
+                                        activity.fetchLocation()
+                                    } else {
+                                        // Ask for permission – this shows the Android dialog
+                                        activity.locationPermissionLauncher.launch(
+                                            Manifest.permission.ACCESS_FINE_LOCATION
+                                        )
+                                    }
                                 }
-                            }) {
+                            ) {
                                 Text("Use My Location")
                             }
                         }
@@ -120,33 +121,24 @@ class HomePage : ComponentActivity() {
         lifecycleScope.launch {
             onLocationTextChanged?.invoke("Getting location...")
 
-            val rawLocation = locationHelper.getLastKnownLocation()
+            val location: Location? = locationHelper.getLastKnownLocation()
 
-            if (rawLocation != null) {
-                val location: Location =
-                    if (rawLocation.latitude in 37.0..38.0 &&
-                        rawLocation.longitude in -123.0..-121.0
-                    ) {
-                        Location("fake-singapore").apply {
-                            latitude = 1.3098   // near Ngee Ann Poly / Clementi area
-                            longitude = 103.7783
-                        }
-                    } else {
-                        rawLocation
-                    }
+            if (location != null) {
+                val lat = location.latitude
+                val lon = location.longitude
 
                 // 1️⃣ Try OneMap first for a Singapore-specific place name
                 val oneMapName = try {
-                    OneMapClient.reverseGeocode(location.latitude, location.longitude)
+                    OneMapClient.reverseGeocode(lat, lon)
                 } catch (e: Exception) {
                     null
                 }
 
-                // 2️⃣ Fallback: Android Geocoder (what you had before)
+                // 2️⃣ Fallback to Android Geocoder if OneMap fails or returns nothing
                 val geocoderName = if (oneMapName == null) {
                     val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
                     val addresses = try {
-                        geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                        geocoder.getFromLocation(lat, lon, 1)
                     } catch (e: IOException) {
                         null
                     }
@@ -154,8 +146,8 @@ class HomePage : ComponentActivity() {
                     if (!addresses.isNullOrEmpty()) {
                         val addr = addresses[0]
                         listOfNotNull(
-                            addr.subLocality,
-                            addr.locality,
+                            addr.subLocality,   // neighbourhood (e.g. Clementi, Holland)
+                            addr.locality,      // usually "Singapore"
                             addr.subAdminArea,
                             addr.adminArea,
                             addr.countryName
@@ -167,11 +159,12 @@ class HomePage : ComponentActivity() {
 
                 val displayName = oneMapName ?: geocoderName ?: "Unknown location"
 
-                val text = "Location: $displayName"
+                // Show both the resolved name and raw coordinates for debugging
+                val text = "Location: $displayName\n($lat, $lon)"
                 onLocationTextChanged?.invoke(text)
 
-                // 👉 Later: here is where you would call a weather API
-                // using location.latitude and location.longitude.
+                // 👉 Later: you can call a weather API here using lat & lon.
+
             } else {
                 onLocationTextChanged?.invoke(
                     "Unable to get location.\nCheck that Location is ON and try again."
@@ -179,5 +172,4 @@ class HomePage : ComponentActivity() {
             }
         }
     }
-
 }
