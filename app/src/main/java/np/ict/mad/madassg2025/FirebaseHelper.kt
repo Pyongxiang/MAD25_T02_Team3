@@ -150,4 +150,41 @@ class FirebaseHelper {
     fun signOut() {
         auth.signOut()
     }
+
+
+    /**
+     * Sends a password reset email to the specified email address.
+     *
+     * @param email The user's email address.
+     * @param onSuccess Callback - called if the email is successfully sent.
+     * @param onFailure Callback - called if sending fails, gets error message.
+     *
+     * Usage:
+     * firebaseHelper.forgotPassword(
+     * email = "test@example.com",
+     * onSuccess = { /* Tell the user to check their email */ },
+     * onFailure = { error -> /* Show error */ }
+     * )
+     */
+    fun forgotPassword(
+        email: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        if (email.isBlank()) {
+            onFailure("Please enter your email address.")
+            return
+        }
+
+        auth.sendPasswordResetEmail(email)
+            .addOnSuccessListener {
+                onSuccess()
+            }
+            .addOnFailureListener { exception ->
+                // Note: Firebase often returns a success message even if the email doesn't exist
+                // for security reasons (to prevent user enumeration). We will trust the default
+                // success/failure outcome here.
+                onFailure(exception.message ?: "Failed to send reset email.")
+            }
+    }
 }

@@ -99,6 +99,45 @@ fun LoginPage() {
                 )
             )
 
+            // --- FORGOT PASSWORD LINK (NEW ADDITION) ---
+            if (isLoginMode) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = {
+                            // 1. Check if email is provided
+                            if (email.isBlank()) {
+                                errorMessage = "Enter your email to reset the password."
+                                return@TextButton
+                            }
+
+                            isLoading = true
+                            firebaseHelper.forgotPassword(email,
+                                onSuccess = {
+                                    isLoading = false
+                                    errorMessage = null
+                                    Toast.makeText(
+                                        context,
+                                        "Password reset email sent to $email!",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                onFailure = { error ->
+                                    isLoading = false
+                                    // Often Firebase returns a generic success/failure for security,
+                                    // but we show the error if it's a validation issue.
+                                    errorMessage = error
+                                }
+                            )
+                        }
+                    ) {
+                        Text("Forgot Password?")
+                    }
+                }
+            }
+
             // --- ERROR MESSAGE ---
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
