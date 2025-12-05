@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
@@ -19,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -67,18 +69,21 @@ class HomePage : ComponentActivity() {
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
             var weatherCondition by remember { mutableStateOf<String?>(null) }
             var weatherError by remember { mutableStateOf<String?>(null) }
+            var weatherIconRes by remember { mutableStateOf<Int?>(null) }
 
             // Call your Retrofit WeatherRepository once when screen loads
             LaunchedEffect(Unit) {
                 weatherError = null
                 weatherTemp = null
                 weatherCondition = null
+                weatherIconRes = null
 
                 try {
                     val response = WeatherRepository.getCurrentWeather("Singapore")
                     weatherCity = response.name
                     weatherTemp = response.main.temp
                     weatherCondition = response.weather.firstOrNull()?.description
+                    weatherIconRes = pickWeatherIcon(weatherCondition)
                 } catch (e: Exception) {
                     Log.e("HomePage", "Error loading weather", e)
                     weatherError = e.message ?: "Unknown error"
@@ -132,6 +137,16 @@ class HomePage : ComponentActivity() {
                                 }
 
                                 else -> {
+                                    // Optional icon (multimedia – your feature)
+                                    weatherIconRes?.let { resId ->
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Image(
+                                            painter = painterResource(id = resId),
+                                            contentDescription = "Weather icon",
+                                            modifier = Modifier.size(72.dp)
+                                        )
+                                    }
+
                                     // City name
                                     Text(
                                         text = weatherCity,
@@ -262,5 +277,20 @@ class HomePage : ComponentActivity() {
             Log.d("LocationPermission", "Permission NOT granted")
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+    }
+}
+
+/**
+ * Maps the OpenWeather description to one of your local icons.
+ */
+private fun pickWeatherIcon(description: String?): Int? {
+    if (description == null) return null
+    val lower = description.lowercase()
+
+    return when {
+        "rain" in lower || "shower" in lower -> R.drawable.ic_rainy
+        "cloud" in lower || "overcast" in lower -> R.drawable.ic_cloudy
+        "sun" in lower || "clear" in lower -> R.drawable.ic_sunny
+        else -> R.drawable.ic_cloudy // fallback
     }
 }
