@@ -17,22 +17,27 @@ class LocationHelper(private val context: Context) {
     @SuppressLint("MissingPermission")
     suspend fun getLastKnownLocation(): Location? =
         suspendCancellableCoroutine { cont ->
-            // Log the status of the location fetch attempt
-            Log.d("LocationHelper", "Attempting to fetch location...")
+            Log.d("LocationHelper", "Trying lastLocation")
 
             client.lastLocation
                 .addOnSuccessListener { location ->
                     if (location != null) {
-                        Log.d("LocationHelper", "Location found: ${location.latitude}, ${location.longitude}")
+                        Log.d(
+                            "LocationHelper",
+                            "lastLocation OK: ${location.latitude}, ${location.longitude}"
+                        )
                         cont.resume(location)
                     } else {
-                        Log.d("LocationHelper", "No last known location, requesting new location")
+                        Log.d(
+                            "LocationHelper",
+                            "lastLocation is NULL, requesting current location"
+                        )
                         requestCurrentLocation(cont)
                     }
                 }
                 .addOnFailureListener { e ->
-                    Log.e("LocationHelper", "Failed to get location: ${e.message}")
-                    cont.resume(null)
+                    Log.e("LocationHelper", "lastLocation failed: ${e.message}")
+                    requestCurrentLocation(cont)
                 }
         }
 
@@ -43,18 +48,24 @@ class LocationHelper(private val context: Context) {
         val cts = CancellationTokenSource()
 
         client.getCurrentLocation(
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY,  // Set to this to balance between accuracy and battery
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY,
             cts.token
-        ).addOnSuccessListener { currentLocation ->
-            Log.d("LocationHelper", "Current location fetched: ${currentLocation.latitude}, ${currentLocation.longitude}")
-            cont.resume(currentLocation)
-        }.addOnFailureListener {
-            Log.e("LocationHelper", "Failed to fetch current location.")
-            cont.resume(null)  // Return null if no location found
+        ).addOnSuccessListener { loc ->
+            if (loc != null) {
+                Log.d(
+                    "LocationHelper",
+                    "currentLocation OK: ${loc.latitude}, ${loc.longitude}"
+                )
+                cont.resume(loc)
+            } else {
+                Log.d("LocationHelper", "currentLocation returned NULL")
+                cont.resume(null)
+            }
+        }.addOnFailureListener { e ->
+            Log.e("LocationHelper", "getCurrentLocation failed: ${e.message}")
+            cont.resume(null)
         }
 
-        cont.invokeOnCancellation {
-            cts.cancel()
-        }
+        cont.invokeOnCancellation { cts.cancel() }
     }
 }

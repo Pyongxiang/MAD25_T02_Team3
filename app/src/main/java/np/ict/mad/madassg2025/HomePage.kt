@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import java.io.IOException
 import java.util.Locale
+import kotlin.math.abs
 
 class HomePage : ComponentActivity() {
 
@@ -213,69 +214,60 @@ class HomePage : ComponentActivity() {
     }
 
     private fun fetchLocation() {
-        val status = ContextCompat.checkSelfPermission(
-            this@HomePage,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
+        lifecycleScope.launch {
+            onLocationTextChanged?.invoke("Getting location...")
 
-        if (status == PackageManager.PERMISSION_GRANTED) {
-            Log.d("LocationPermission", "Permission granted, fetching location")
-            lifecycleScope.launch {
-                onLocationTextChanged?.invoke("Getting location...")
+            val location = locationHelper.getLastKnownLocation()
 
-                val location: Location? = locationHelper.getLastKnownLocation()
+            if (location != null) {
+                val lat = location.latitude
+                val lon = location.longitude
+                Log.d("HomePage", "Got location: $lat, $lon")
 
-                if (location != null) {
-                    val lat = location.latitude
-                    val lon = location.longitude
-
-                    // Try OneMap for a SG-specific place name
-                    val oneMapName = try {
-                        OneMapClient.reverseGeocode(lat, lon)
-                    } catch (e: Exception) {
-                        Log.e("HomePage", "Error fetching location name from OneMap: ${e.message}")
-                        null
-                    }
-
-                    // Fallback to Geocoder if OneMap fails
-                    val geocoderName = if (oneMapName == null) {
-                        val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
-                        val addresses = try {
-                            geocoder.getFromLocation(lat, lon, 1)
-                        } catch (e: IOException) {
-                            Log.e("HomePage", "Error fetching location from Geocoder: ${e.message}")
-                            null
-                        }
-
-                        if (!addresses.isNullOrEmpty()) {
-                            val addr = addresses[0]
-                            listOfNotNull(
-                                addr.subLocality,
-                                addr.locality,
-                                addr.subAdminArea,
-                                addr.adminArea,
-                                addr.countryName
-                            ).firstOrNull()
-                        } else {
-                            "Unable to resolve location"
-                        }
-                    } else oneMapName
-
-                    val displayName = geocoderName ?: "Unknown location"
-                    val locationText = "Location: $displayName\n($lat, $lon)"
-                    onLocationTextChanged?.invoke(locationText)
-
-                    // Weather still comes from WeatherRepository via city name (above)
-
-                } else {
-                    onLocationTextChanged?.invoke(
-                        "Unable to get location.\nCheck that Location is ON and try again."
-                    )
+                // Use SG locale so Geocoder prefers Singapore naming
+                val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
+                val addresses = try {
+                    geocoder.getFromLocation(lat, lon, 1)
+                } catch (e: IOException) {
+                    Log.e("HomePage", "Geocoder error: ${e.message}")
+                    null
                 }
+
+                // First, whatever Geocoder gives us
+                val rawName: String? = if (!addresses.isNullOrEmpty()) {
+                    val addr = addresses[0]
+                    listOfNotNull(
+                        addr.subLocality,   // e.g. "Clementi", "Bukit Timah"
+                        addr.locality,      // usually "Singapore"
+                        addr.subAdminArea,
+                        addr.adminArea,
+                        addr.countryName
+                    ).firstOrNull()
+                } else {
+                    null
+                }
+
+                // Then clean it up / override
+                val areaName = when {
+                    // If coords are near Ngee Ann Poly, force that name
+                    abs(lat - 1.3323) < 0.01 && abs(lon - 103.7768) < 0.01 ->
+                        "Ngee Ann Polytechnic"
+
+                    // If Geocoder returned something meaningful and not "NIL"
+                    rawName != null && !rawName.equals("NIL", ignoreCase = true) ->
+                        rawName
+
+                    else -> "Unknown location"
+                }
+
+                val text = "Location: $areaName\n($lat, $lon)"
+                onLocationTextChanged?.invoke(text)
+
+            } else {
+                onLocationTextChanged?.invoke(
+                    "Unable to get location.\nCheck that Location is ON and try again."
+                )
             }
-        } else {
-            Log.d("LocationPermission", "Permission NOT granted")
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
     }
 }
