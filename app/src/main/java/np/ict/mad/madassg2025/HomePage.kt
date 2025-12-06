@@ -271,7 +271,6 @@ class HomePage : ComponentActivity() {
         }
     }
 }
-
 /**
  * Maps the OpenWeather description to one of your local icons.
  */
