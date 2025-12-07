@@ -5,7 +5,7 @@ educational purposes.
 
 Team members
 Phua Yong Xiang, Github username : Pyongxiang
-Evan Goh, Github username : evangohg
+Evan Goh, Github username : evangohh
 Zhi Heng, Github username : Heng-Github1
 Keagan Tan, Github username : GITNumberx
 
