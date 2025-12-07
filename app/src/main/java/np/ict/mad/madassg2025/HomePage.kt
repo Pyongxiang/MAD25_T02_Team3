@@ -214,56 +214,48 @@ class HomePage : ComponentActivity() {
     }
 
     private fun fetchLocation() {
-        val status = ContextCompat.checkSelfPermission(
-            this@HomePage,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
-
-        if (status != PackageManager.PERMISSION_GRANTED) {
-            Log.d("LocationPermission", "Permission NOT granted")
-            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-            return
-        }
-
-        Log.d("LocationPermission", "Permission granted, fetching location")
-
         lifecycleScope.launch {
             onLocationTextChanged?.invoke("Getting location...")
 
-            val location: Location? = locationHelper.getLastKnownLocation()
+            val location = locationHelper.getLastKnownLocation()
 
             if (location != null) {
                 val lat = location.latitude
                 val lon = location.longitude
-                Log.d("HomePage", "Got location: $lat, $lon")
 
-                // First, show something immediately with coords
-                onLocationTextChanged?.invoke(
-                    "Location: ($lat, $lon)"
-                )
-
-                // Then try to resolve a friendly area name (local, no OneMap)
-                val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
-                val addresses = try {
-                    geocoder.getFromLocation(lat, lon, 1)
-                } catch (e: IOException) {
-                    Log.e("HomePage", "Geocoder error: ${e.message}")
+                // 1) Try OneMap first for a nice SG-specific name
+                val oneMapName = try {
+                    OneMapClient.reverseGeocode(lat, lon)
+                } catch (e: Exception) {
                     null
                 }
 
-                val areaName = if (!addresses.isNullOrEmpty()) {
-                    val addr = addresses[0]
-                    listOfNotNull(
-                        addr.subLocality,
-                        addr.locality,
-                        addr.subAdminArea,
-                        addr.adminArea,
-                        addr.countryName
-                    ).firstOrNull() ?: "Unknown location"
-                } else {
-                    "Unknown location"
-                }
+                // 2) If OneMap fails or returns null, fall back to Geocoder
+                val geocoderName = if (oneMapName == null) {
+                    val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
+                    val addresses = try {
+                        geocoder.getFromLocation(lat, lon, 1)
+                    } catch (e: IOException) {
+                        null
+                    }
 
+                    if (!addresses.isNullOrEmpty()) {
+                        val addr = addresses[0]
+                        listOfNotNull(
+                            addr.subLocality,   // e.g. "Holland", "Clementi", "Ulu Pandan"
+                            addr.locality,      // usually "Singapore"
+                            addr.subAdminArea,
+                            addr.adminArea,
+                            addr.countryName
+                        ).firstOrNull()
+                    } else {
+                        null
+                    }
+                } else null
+
+                val areaName = oneMapName ?: geocoderName ?: "Unknown location"
+
+                // Optional: show coords too so you can see it matches Extended Controls
                 val text = "Location: $areaName\n($lat, $lon)"
                 onLocationTextChanged?.invoke(text)
 
