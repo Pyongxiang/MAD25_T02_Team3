@@ -13,15 +13,27 @@ object OneMapClient {
 
     private const val TAG = "OneMapClient"
 
-    // Public reverse geocode API – no token needed
-    private const val BASE_URL = "https://www.onemap.gov.sg"
-    private const val REVERSE_GEOCODE_PATH = "/api/public/revgeocode"
+    // 🔑 Your OneMap access_token (JWT). This expires after a few days.
+    // When it expires, you must get a new one and paste it here.
+    private const val ONE_MAP_TOKEN =
+        "API_KEY"
 
+    private const val BASE_URL = "https://www.onemap.gov.sg"
+    private const val REVERSE_GEOCODE_PATH = "/privateapi/commonsvc/revgeocode"
+
+    /**
+     * Reverse geocode lat/lon using OneMap private API.
+     *
+     * Returns:
+     *  - BUILDINGNAME (e.g. "ION ORCHARD"), or
+     *  - "BLOCK ROAD" (e.g. "238 THOMSON ROAD"), or
+     *  - ROAD, or
+     *  - null if request fails / no useful result.
+     */
     suspend fun reverseGeocode(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
             val urlString =
-                "$BASE_URL$REVERSE_GEOCODE_PATH" +
-                        "?location=$lat,$lon&buffer=20&addressType=All"
+                "$BASE_URL$REVERSE_GEOCODE_PATH?location=$lat,$lon&buffer=20&addressType=All"
 
             var connection: HttpURLConnection? = null
 
@@ -31,7 +43,8 @@ object OneMapClient {
                     requestMethod = "GET"
                     connectTimeout = 10_000
                     readTimeout = 10_000
-                    // 🚫 No Authorization / token header – this is public API
+                    // ✅ NEW: pass token in header
+                    setRequestProperty("Authorization", "Bearer $ONE_MAP_TOKEN")
                 }
 
                 val code = connection.responseCode
@@ -56,7 +69,7 @@ object OneMapClient {
 
                 val trimmed = responseText.trim()
 
-                // Guard against HTML (e.g. maintenance page) so we don't crash
+                // Guard against HTML so we don't crash if they send a page instead of JSON
                 if (trimmed.startsWith("<")) {
                     Log.e(
                         TAG,

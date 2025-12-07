@@ -214,48 +214,61 @@ class HomePage : ComponentActivity() {
     }
 
     private fun fetchLocation() {
+        val status = ContextCompat.checkSelfPermission(
+            this@HomePage,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+
+        if (status != PackageManager.PERMISSION_GRANTED) {
+            Log.d("LocationPermission", "Permission NOT granted")
+            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            return
+        }
+
+        Log.d("LocationPermission", "Permission granted, fetching location")
+
         lifecycleScope.launch {
             onLocationTextChanged?.invoke("Getting location...")
 
-            val location = locationHelper.getLastKnownLocation()
+            val location: Location? = locationHelper.getLastKnownLocation()
 
             if (location != null) {
                 val lat = location.latitude
                 val lon = location.longitude
+                Log.d("HomePage", "Got location: $lat, $lon")
 
-                // 1) Try OneMap first for a nice SG-specific name
-                val oneMapName = try {
-                    OneMapClient.reverseGeocode(lat, lon)
-                } catch (e: Exception) {
+                // Show coords immediately
+                onLocationTextChanged?.invoke("Location: ($lat, $lon)")
+
+                // Use Android Geocoder to get a human-readable name
+                val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
+                val addresses = try {
+                    geocoder.getFromLocation(lat, lon, 1)
+                } catch (e: IOException) {
+                    Log.e("HomePage", "Geocoder error: ${e.message}")
                     null
                 }
 
-                // 2) If OneMap fails or returns null, fall back to Geocoder
-                val geocoderName = if (oneMapName == null) {
-                    val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
-                    val addresses = try {
-                        geocoder.getFromLocation(lat, lon, 1)
-                    } catch (e: IOException) {
-                        null
+                val areaName = if (!addresses.isNullOrEmpty()) {
+                    val addr = addresses[0]
+
+                    val feature = addr.featureName?.takeIf { it.isNotBlank() }      // e.g. "535"
+                    val road = addr.thoroughfare?.takeIf { it.isNotBlank() }        // e.g. "Clementi Road"
+                    val subLocality = addr.subLocality?.takeIf { it.isNotBlank() }  // e.g. "Clementi"
+                    val locality = addr.locality?.takeIf { it.isNotBlank() }        // usually "Singapore"
+
+                    when {
+                        feature != null && road != null -> "$feature $road"        // "535 Clementi Road"
+                        road != null && subLocality != null -> "$road, $subLocality"
+                        road != null -> road
+                        subLocality != null -> subLocality
+                        locality != null -> locality
+                        else -> "Unknown location"
                     }
+                } else {
+                    "Unknown location
+                }
 
-                    if (!addresses.isNullOrEmpty()) {
-                        val addr = addresses[0]
-                        listOfNotNull(
-                            addr.subLocality,   // e.g. "Holland", "Clementi", "Ulu Pandan"
-                            addr.locality,      // usually "Singapore"
-                            addr.subAdminArea,
-                            addr.adminArea,
-                            addr.countryName
-                        ).firstOrNull()
-                    } else {
-                        null
-                    }
-                } else null
-
-                val areaName = oneMapName ?: geocoderName ?: "Unknown location"
-
-                // Optional: show coords too so you can see it matches Extended Controls
                 val text = "Location: $areaName\n($lat, $lon)"
                 onLocationTextChanged?.invoke(text)
 
