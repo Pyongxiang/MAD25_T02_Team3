@@ -26,4 +26,5 @@ Current Weather Display - ZHI HENG
 "Use My Location" Function - EVAN
 Forecast Screen - KEAGAN
 
-Stage 2 -
+Stage 2 - 
+Keagan - Fixing broken Forecast feature
