@@ -3,13 +3,8 @@ package np.ict.mad.madassg2025
 import retrofit2.http.GET
 import retrofit2.http.Query
 
-data class MainInfo(
-    val temp: Double
-)
-
-data class WeatherInfo(
-    val description: String
-)
+data class MainInfo(val temp: Double)
+data class WeatherInfo(val description: String)
 
 data class WeatherResponse(
     val name: String,
@@ -19,9 +14,19 @@ data class WeatherResponse(
 
 interface WeatherApiService {
 
+    // City-based (old)
     @GET("data/2.5/weather")
-    suspend fun getCurrentWeather(
+    suspend fun getCurrentWeatherByCity(
         @Query("q") city: String,
+        @Query("appid") apiKey: String,
+        @Query("units") units: String = "metric"
+    ): WeatherResponse
+
+    // Coords-based (new)
+    @GET("data/2.5/weather")
+    suspend fun getCurrentWeatherByCoords(
+        @Query("lat") lat: Double,
+        @Query("lon") lon: Double,
         @Query("appid") apiKey: String,
         @Query("units") units: String = "metric"
     ): WeatherResponse

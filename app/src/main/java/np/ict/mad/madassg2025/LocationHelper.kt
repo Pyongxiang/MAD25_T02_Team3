@@ -3,43 +3,52 @@ package np.ict.mad.madassg2025
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
+import android.os.Looper
 import android.util.Log
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.android.gms.location.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-class LocationHelper(private val context: Context) {
+class LocationHelper(context: Context) {
 
     private val client = LocationServices.getFusedLocationProviderClient(context)
 
+    /**
+     * Forces a fresh location fix (not cached "last known").
+     * This fixes the "stuck at Chinese Garden" issue.
+     */
     @SuppressLint("MissingPermission")
-    suspend fun getLastKnownLocation(): Location? =
-        suspendCancellableCoroutine { cont ->
-            Log.d("LocationHelper", "Requesting current location only")
+    suspend fun getFreshLocation(): Location? = suspendCancellableCoroutine { cont ->
+        val request = LocationRequest.Builder(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            0L
+        )
+            .setWaitForAccurateLocation(true)
+            .setMaxUpdates(1)
+            .build()
 
-            val cts = CancellationTokenSource()
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(result: LocationResult) {
+                val loc = result.lastLocation
+                Log.d("LocationHelper", "Fresh location: ${loc?.latitude}, ${loc?.longitude}")
+                client.removeLocationUpdates(this)
+                cont.resume(loc)
+            }
 
-            client.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                cts.token
-            ).addOnSuccessListener { loc ->
-                if (loc != null) {
-                    Log.d(
-                        "LocationHelper",
-                        "getCurrentLocation OK: ${loc.latitude}, ${loc.longitude}"
-                    )
-                    cont.resume(loc)
-                } else {
-                    Log.d("LocationHelper", "getCurrentLocation returned NULL")
-                    cont.resume(null)
-                }
-            }.addOnFailureListener { e ->
-                Log.e("LocationHelper", "getCurrentLocation failed: ${e.message}")
+            override fun onLocationAvailability(availability: LocationAvailability) {
+                Log.d("LocationHelper", "Location availability: ${availability.isLocationAvailable}")
+            }
+        }
+
+        client.requestLocationUpdates(request, callback, Looper.getMainLooper())
+            .addOnFailureListener { e ->
+                Log.e("LocationHelper", "requestLocationUpdates failed: ${e.message}")
+                client.removeLocationUpdates(callback)
                 cont.resume(null)
             }
 
-            cont.invokeOnCancellation { cts.cancel() }
+        cont.invokeOnCancellation {
+            client.removeLocationUpdates(callback)
         }
+    }
 }

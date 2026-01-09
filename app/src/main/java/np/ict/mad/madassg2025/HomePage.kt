@@ -2,7 +2,6 @@ package np.ict.mad.madassg2025
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.location.Geocoder
 import android.location.Location
 import android.os.Bundle
 import android.util.Log
@@ -26,28 +25,19 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import java.io.IOException
-import java.util.Locale
-import kotlin.math.abs
 
 class HomePage : ComponentActivity() {
 
     private lateinit var locationHelper: LocationHelper
 
-    // callback to update the location text from fetchLocation()
     private var onLocationTextChanged: ((String) -> Unit)? = null
+    private var onWeatherUpdated: ((WeatherResponse) -> Unit)? = null
+    private var onWeatherError: ((String) -> Unit)? = null
 
-    // Register for location permission request
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                fetchLocation() // Permission granted, fetch location
-            } else {
-                onLocationTextChanged?.invoke(
-                    "Permission denied.\nPlease allow location to use this feature."
-                )
-                Log.d("LocationPermission", "Permission NOT granted")
-            }
+            if (isGranted) fetchLocationAndWeather()
+            else onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +46,6 @@ class HomePage : ComponentActivity() {
         locationHelper = LocationHelper(applicationContext)
 
         setContent {
-            // --------- Location state (friend's feature) ----------
             var locationText by remember { mutableStateOf("Location not fetched yet") }
             var hasLocation by remember { mutableStateOf(false) }
 
@@ -65,55 +54,40 @@ class HomePage : ComponentActivity() {
                 hasLocation = newText.startsWith("Location:")
             }
 
-            // --------- Current Weather state (your feature) ----------
-            var weatherCity by remember { mutableStateOf("Singapore") }
+            var weatherCity by remember { mutableStateOf("—") }
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
             var weatherCondition by remember { mutableStateOf<String?>(null) }
             var weatherError by remember { mutableStateOf<String?>(null) }
             var weatherIconRes by remember { mutableStateOf<Int?>(null) }
 
-            // Call your Retrofit WeatherRepository once when screen loads
-            LaunchedEffect(Unit) {
+            onWeatherUpdated = { response ->
                 weatherError = null
+                weatherCity = response.name
+                weatherTemp = response.main.temp
+                weatherCondition = response.weather.firstOrNull()?.description
+                weatherIconRes = pickWeatherIcon(weatherCondition)
+            }
+
+            onWeatherError = { msg ->
+                weatherError = msg
                 weatherTemp = null
                 weatherCondition = null
                 weatherIconRes = null
-
-                try {
-                    val response = WeatherRepository.getCurrentWeather("Singapore")
-                    weatherCity = response.name
-                    weatherTemp = response.main.temp
-                    weatherCondition = response.weather.firstOrNull()?.description
-                    weatherIconRes = pickWeatherIcon(weatherCondition)
-                } catch (e: Exception) {
-                    Log.e("HomePage", "Error loading weather", e)
-                    weatherError = e.message ?: "Unknown error"
-                }
             }
 
             Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xFF101820)),
+                modifier = Modifier.fillMaxSize().background(Color(0xFF101820)),
                 color = Color.Transparent
             ) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
-
-                        // -------- Current Weather section (now at the top) --------
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 text = "Current Weather",
                                 color = Color.White.copy(alpha = 0.7f),
@@ -121,24 +95,19 @@ class HomePage : ComponentActivity() {
                             )
 
                             when {
-                                weatherError != null -> {
-                                    Text(
-                                        text = "Error loading weather: $weatherError",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
+                                weatherError != null -> Text(
+                                    text = "Error: $weatherError",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
 
-                                weatherTemp == null || weatherCondition == null -> {
-                                    Text(
-                                        text = "Loading weather...",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
+                                weatherTemp == null || weatherCondition == null -> Text(
+                                    text = "No weather yet (tap Use My Location)",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
 
                                 else -> {
-                                    // Optional icon (multimedia – your feature)
                                     weatherIconRes?.let { resId ->
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Image(
@@ -148,23 +117,19 @@ class HomePage : ComponentActivity() {
                                         )
                                     }
 
-                                    // City name
                                     Text(
                                         text = weatherCity,
                                         color = Color.White,
                                         style = MaterialTheme.typography.titleMedium
                                     )
-                                    // Big temperature
                                     Text(
                                         text = "${weatherTemp!!.toInt()}°C",
                                         color = Color.White,
                                         style = MaterialTheme.typography.displaySmall,
                                         fontWeight = FontWeight.SemiBold
                                     )
-                                    // Condition (e.g. "light rain" → "Light rain")
                                     Text(
-                                        text = weatherCondition!!
-                                            .replaceFirstChar { it.uppercase() },
+                                        text = weatherCondition!!.replaceFirstChar { it.uppercase() },
                                         color = Color.White,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
@@ -172,40 +137,28 @@ class HomePage : ComponentActivity() {
                             }
                         }
 
-                        // -------- Location card (now below weather) --------
                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth()
                                 .background(Color(0x331CFFFFFF))
                                 .padding(vertical = 24.dp, horizontal = 20.dp)
                         ) {
-                            Text(
-                                text = locationText,
-                                color = Color.White,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                            Text(text = locationText, color = Color.White)
                         }
 
-                        // -------- Use My Location button --------
-                        if (!hasLocation) {
-                            Button(
-                                onClick = {
-                                    val status = ContextCompat.checkSelfPermission(
-                                        this@HomePage,
-                                        Manifest.permission.ACCESS_FINE_LOCATION
-                                    )
-
-                                    if (status == PackageManager.PERMISSION_GRANTED) {
-                                        fetchLocation()
-                                    } else {
-                                        locationPermissionLauncher.launch(
-                                            Manifest.permission.ACCESS_FINE_LOCATION
-                                        )
-                                    }
+                        Button(
+                            onClick = {
+                                val status = ContextCompat.checkSelfPermission(
+                                    this@HomePage,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                )
+                                if (status == PackageManager.PERMISSION_GRANTED) {
+                                    fetchLocationAndWeather()
+                                } else {
+                                    locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                                 }
-                            ) {
-                                Text("Use My Location")
                             }
+                        ) {
+                            Text("Use My Location")
                         }
                     }
                 }
@@ -213,84 +166,60 @@ class HomePage : ComponentActivity() {
         }
     }
 
-    private fun fetchLocation() {
+    private fun fetchLocationAndWeather() {
         val status = ContextCompat.checkSelfPermission(
             this@HomePage,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
-
         if (status != PackageManager.PERMISSION_GRANTED) {
-            Log.d("LocationPermission", "Permission NOT granted")
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             return
         }
 
-        Log.d("LocationPermission", "Permission granted, fetching location")
-
         lifecycleScope.launch {
-            onLocationTextChanged?.invoke("Getting location...")
+            onLocationTextChanged?.invoke("Getting fresh location...")
 
-            val location: Location? = locationHelper.getLastKnownLocation()
+            val location: Location? = locationHelper.getFreshLocation()
+            if (location == null) {
+                onLocationTextChanged?.invoke("Unable to get location.\nTurn on Location and try again.")
+                onWeatherError?.invoke("No location fix")
+                return@launch
+            }
 
-            if (location != null) {
-                val lat = location.latitude
-                val lon = location.longitude
-                Log.d("HomePage", "Got location: $lat, $lon")
+            val lat = location.latitude
+            val lon = location.longitude
+            Log.d("HomePage", "Using coords lat=$lat lon=$lon")
 
-                // Show coords immediately
-                onLocationTextChanged?.invoke("Location: ($lat, $lon)")
+            // 1) Fetch weather using SAME coords
+            try {
+                val weather = WeatherRepository.getCurrentWeather(lat, lon)
+                onWeatherUpdated?.invoke(weather)
 
-                // Use Android Geocoder to get a human-readable name
-                val geocoder = Geocoder(this@HomePage, Locale("en", "SG"))
-                val addresses = try {
-                    geocoder.getFromLocation(lat, lon, 1)
-                } catch (e: IOException) {
-                    Log.e("HomePage", "Geocoder error: ${e.message}")
-                    null
-                }
+                // 2) Get a human place name (Geocoder). If fails, fallback to weather.name.
+                val placeName = GeocoderHelper.reverseGeocode(applicationContext, lat, lon)
+                    ?: weather.name
+                    ?: "Unknown location"
 
-                val areaName = if (!addresses.isNullOrEmpty()) {
-                    val addr = addresses[0]
+                onLocationTextChanged?.invoke("Location: $placeName\n($lat, $lon)")
+            } catch (e: Exception) {
+                Log.e("HomePage", "Weather fetch failed: ${e.message}", e)
+                onWeatherError?.invoke(e.message ?: "Weather error")
 
-                    val feature = addr.featureName?.takeIf { it.isNotBlank() }      // e.g. "535"
-                    val road = addr.thoroughfare?.takeIf { it.isNotBlank() }        // e.g. "Clementi Road"
-                    val subLocality = addr.subLocality?.takeIf { it.isNotBlank() }  // e.g. "Clementi"
-                    val locality = addr.locality?.takeIf { it.isNotBlank() }        // usually "Singapore"
-
-                    when {
-                        feature != null && road != null -> "$feature $road"        // "535 Clementi Road"
-                        road != null && subLocality != null -> "$road, $subLocality"
-                        road != null -> road
-                        subLocality != null -> subLocality
-                        locality != null -> locality
-                        else -> "Unknown location"
-                    }
-                } else {
-                    "Unknown location
-                }
-
-                val text = "Location: $areaName\n($lat, $lon)"
-                onLocationTextChanged?.invoke(text)
-
-            } else {
-                onLocationTextChanged?.invoke(
-                    "Unable to get location.\nCheck that Location is ON and try again."
-                )
+                // Still show coords even if weather fails
+                val placeName = GeocoderHelper.reverseGeocode(applicationContext, lat, lon) ?: "Unknown location"
+                onLocationTextChanged?.invoke("Location: $placeName\n($lat, $lon)")
             }
         }
     }
 }
-/**
- * Maps the OpenWeather description to one of your local icons.
- */
+
 private fun pickWeatherIcon(description: String?): Int? {
     if (description == null) return null
     val lower = description.lowercase()
-
     return when {
         "rain" in lower || "shower" in lower -> R.drawable.ic_rainy
         "cloud" in lower || "overcast" in lower -> R.drawable.ic_cloudy
         "sun" in lower || "clear" in lower -> R.drawable.ic_sunny
-        else -> R.drawable.ic_cloudy // fallback
+        else -> R.drawable.ic_cloudy
     }
 }
