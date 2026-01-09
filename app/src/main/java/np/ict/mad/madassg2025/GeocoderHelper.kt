@@ -15,24 +15,26 @@ object GeocoderHelper {
             try {
                 val geocoder = Geocoder(context, Locale.getDefault())
 
+                fun pickName(a: android.location.Address?): String? {
+                    if (a == null) return null
+                    // Prefer more human-friendly names first
+                    return a.featureName
+                        ?: a.subLocality
+                        ?: a.locality
+                        ?: a.thoroughfare
+                        ?: a.adminArea
+                }
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     var result: String? = null
                     geocoder.getFromLocation(lat, lon, 1) { addresses ->
-                        val a = addresses.firstOrNull()
-                        result = a?.subLocality
-                            ?: a?.locality
-                                    ?: a?.featureName
-                                    ?: a?.thoroughfare
+                        result = pickName(addresses.firstOrNull())
                     }
                     result
                 } else {
                     @Suppress("DEPRECATION")
                     val addresses = geocoder.getFromLocation(lat, lon, 1)
-                    val a = addresses?.firstOrNull()
-                    a?.subLocality
-                        ?: a?.locality
-                        ?: a?.featureName
-                        ?: a?.thoroughfare
+                    pickName(addresses?.firstOrNull())
                 }
             } catch (e: Exception) {
                 Log.e("GeocoderHelper", "reverseGeocode failed: ${e.message}", e)

@@ -4,7 +4,12 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 data class MainInfo(val temp: Double)
-data class WeatherInfo(val description: String)
+
+// ✅ UPDATED: includes "id" for reliable icon mapping
+data class WeatherInfo(
+    val id: Int,
+    val description: String
+)
 
 data class WeatherResponse(
     val name: String,
@@ -14,7 +19,7 @@ data class WeatherResponse(
 
 interface WeatherApiService {
 
-    // City-based (old)
+    // City-based (optional)
     @GET("data/2.5/weather")
     suspend fun getCurrentWeatherByCity(
         @Query("q") city: String,
@@ -22,7 +27,7 @@ interface WeatherApiService {
         @Query("units") units: String = "metric"
     ): WeatherResponse
 
-    // Coords-based (new)
+    // Coords-based (recommended)
     @GET("data/2.5/weather")
     suspend fun getCurrentWeatherByCoords(
         @Query("lat") lat: Double,

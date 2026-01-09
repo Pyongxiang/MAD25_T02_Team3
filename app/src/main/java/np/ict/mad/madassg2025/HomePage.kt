@@ -47,12 +47,6 @@ class HomePage : ComponentActivity() {
 
         setContent {
             var locationText by remember { mutableStateOf("Location not fetched yet") }
-            var hasLocation by remember { mutableStateOf(false) }
-
-            onLocationTextChanged = { newText ->
-                locationText = newText
-                hasLocation = newText.startsWith("Location:")
-            }
 
             var weatherCity by remember { mutableStateOf("—") }
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
@@ -60,12 +54,16 @@ class HomePage : ComponentActivity() {
             var weatherError by remember { mutableStateOf<String?>(null) }
             var weatherIconRes by remember { mutableStateOf<Int?>(null) }
 
+            onLocationTextChanged = { newText -> locationText = newText }
+
             onWeatherUpdated = { response ->
                 weatherError = null
                 weatherCity = response.name
                 weatherTemp = response.main.temp
-                weatherCondition = response.weather.firstOrNull()?.description
-                weatherIconRes = pickWeatherIcon(weatherCondition)
+
+                val first = response.weather.firstOrNull()
+                weatherCondition = first?.description
+                weatherIconRes = pickWeatherIconById(first?.id)
             }
 
             onWeatherError = { msg ->
@@ -97,14 +95,12 @@ class HomePage : ComponentActivity() {
                             when {
                                 weatherError != null -> Text(
                                     text = "Error: $weatherError",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    color = Color.White
                                 )
 
                                 weatherTemp == null || weatherCondition == null -> Text(
                                     text = "No weather yet (tap Use My Location)",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.bodyMedium
+                                    color = Color.White
                                 )
 
                                 else -> {
@@ -130,15 +126,15 @@ class HomePage : ComponentActivity() {
                                     )
                                     Text(
                                         text = weatherCondition!!.replaceFirstChar { it.uppercase() },
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.bodyMedium
+                                        color = Color.White
                                     )
                                 }
                             }
                         }
 
                         Box(
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
                                 .background(Color(0x331CFFFFFF))
                                 .padding(vertical = 24.dp, horizontal = 20.dp)
                         ) {
@@ -181,7 +177,7 @@ class HomePage : ComponentActivity() {
 
             val location: Location? = locationHelper.getFreshLocation()
             if (location == null) {
-                onLocationTextChanged?.invoke("Unable to get location.\nTurn on Location and try again.")
+                onLocationTextChanged?.invoke("Location: Unknown\n(Unable to get location)")
                 onWeatherError?.invoke("No location fix")
                 return@launch
             }
@@ -190,36 +186,32 @@ class HomePage : ComponentActivity() {
             val lon = location.longitude
             Log.d("HomePage", "Using coords lat=$lat lon=$lon")
 
-            // 1) Fetch weather using SAME coords
             try {
+                // Weather
                 val weather = WeatherRepository.getCurrentWeather(lat, lon)
                 onWeatherUpdated?.invoke(weather)
 
-                // 2) Get a human place name (Geocoder). If fails, fallback to weather.name.
-                val placeName = GeocoderHelper.reverseGeocode(applicationContext, lat, lon)
-                    ?: weather.name
-                    ?: "Unknown location"
+                // ✅ Better place name from OpenWeather reverse geocoding
+                val placeName = WeatherRepository.getPlaceName(lat, lon) ?: "Unknown location"
 
                 onLocationTextChanged?.invoke("Location: $placeName\n($lat, $lon)")
             } catch (e: Exception) {
-                Log.e("HomePage", "Weather fetch failed: ${e.message}", e)
-                onWeatherError?.invoke(e.message ?: "Weather error")
-
-                // Still show coords even if weather fails
-                val placeName = GeocoderHelper.reverseGeocode(applicationContext, lat, lon) ?: "Unknown location"
-                onLocationTextChanged?.invoke("Location: $placeName\n($lat, $lon)")
+                Log.e("HomePage", "Fetch failed: ${e.message}", e)
+                onWeatherError?.invoke(e.message ?: "Error")
+                onLocationTextChanged?.invoke("Location: Unknown location\n($lat, $lon)")
             }
         }
     }
 }
 
-private fun pickWeatherIcon(description: String?): Int? {
-    if (description == null) return null
-    val lower = description.lowercase()
-    return when {
-        "rain" in lower || "shower" in lower -> R.drawable.ic_rainy
-        "cloud" in lower || "overcast" in lower -> R.drawable.ic_cloudy
-        "sun" in lower || "clear" in lower -> R.drawable.ic_sunny
+private fun pickWeatherIconById(weatherId: Int?): Int {
+    return when (weatherId) {
+        in 200..232 -> R.drawable.ic_rainy
+        in 300..531 -> R.drawable.ic_rainy
+        in 600..622 -> R.drawable.ic_cloudy
+        in 701..781 -> R.drawable.ic_cloudy
+        800 -> R.drawable.ic_sunny
+        in 801..804 -> R.drawable.ic_cloudy
         else -> R.drawable.ic_cloudy
     }
 }
