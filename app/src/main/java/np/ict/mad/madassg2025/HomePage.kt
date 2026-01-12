@@ -41,6 +41,7 @@ class HomePage : ComponentActivity() {
     private var onWeatherUpdated: ((WeatherResponse) -> Unit)? = null
     private var onWeatherError: ((String) -> Unit)? = null
     private var onCoordsUpdated: ((Double, Double) -> Unit)? = null
+    private var onPlaceLabelUpdated: ((String) -> Unit)? = null
 
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -56,7 +57,9 @@ class HomePage : ComponentActivity() {
         setContent {
             var locationText by remember { mutableStateOf("Location not fetched yet") }
 
-            var weatherCity by remember { mutableStateOf("—") }
+            // ✅ This is the main label shown in the UI header (should come from Nominatim)
+            var placeLabel by remember { mutableStateOf("—") }
+
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
             var weatherCondition by remember { mutableStateOf<String?>(null) }
             var weatherError by remember { mutableStateOf<String?>(null) }
@@ -68,14 +71,20 @@ class HomePage : ComponentActivity() {
 
             onLocationTextChanged = { newText -> locationText = newText }
 
+            // ✅ We no longer use response.name as the main place label.
+            // We only use it as a fallback if Nominatim fails.
             onWeatherUpdated = { response ->
                 weatherError = null
-                weatherCity = response.name
                 weatherTemp = response.main.temp
 
                 val first = response.weather.firstOrNull()
                 weatherCondition = first?.description
                 weatherIconRes = pickWeatherIconById(first?.id)
+
+                if (placeLabel == "—" || placeLabel.isBlank()) {
+                    // fallback if we haven't got a place label yet
+                    placeLabel = response.name
+                }
             }
 
             onWeatherError = { msg ->
@@ -88,6 +97,10 @@ class HomePage : ComponentActivity() {
             onCoordsUpdated = { lat, lon ->
                 lastLat = lat
                 lastLon = lon
+            }
+
+            onPlaceLabelUpdated = { newLabel ->
+                placeLabel = newLabel
             }
 
             val bg = Brush.verticalGradient(
@@ -121,8 +134,9 @@ class HomePage : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium
                         )
 
+                        // ✅ Use Nominatim placeLabel here (fixes “Chinese Garden stuck” look)
                         Text(
-                            text = weatherCity,
+                            text = placeLabel,
                             color = Color.White,
                             style = MaterialTheme.typography.headlineMedium,
                             maxLines = 1,
@@ -164,7 +178,8 @@ class HomePage : ComponentActivity() {
                                 val intent = Intent(this@HomePage, ForecastActivity::class.java).apply {
                                     putExtra("lat", lastLat!!)
                                     putExtra("lon", lastLon!!)
-                                    putExtra("place", weatherCity)
+                                    // ✅ pass correct label
+                                    putExtra("place", placeLabel)
                                 }
                                 startActivity(intent)
                             },
@@ -189,7 +204,6 @@ class HomePage : ComponentActivity() {
                                 color = Color.White.copy(alpha = 0.75f)
                             )
 
-                            // Current weather icon (optional, keeps your existing icons)
                             if (weatherIconRes != null && weatherTemp != null) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -209,7 +223,6 @@ class HomePage : ComponentActivity() {
                                 }
                             }
 
-                            // Location text (kept, but styled)
                             Text(
                                 text = locationText,
                                 color = Color.White.copy(alpha = 0.80f),
@@ -220,7 +233,6 @@ class HomePage : ComponentActivity() {
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    // Use My Location button (kept)
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
@@ -266,18 +278,20 @@ class HomePage : ComponentActivity() {
             val lon = location.longitude
             Log.d("HomePage", "Using coords lat=$lat lon=$lon")
 
-            // Save coords for navigation to forecast screen
             onCoordsUpdated?.invoke(lat, lon)
 
             try {
-                // Weather
+                // 1) Weather first (keeps your existing logic)
                 val weather = WeatherRepository.getCurrentWeather(lat, lon)
                 onWeatherUpdated?.invoke(weather)
 
-                // Better place name from OpenWeather reverse geocoding
-                val placeName = WeatherRepository.getPlaceName(lat, lon) ?: "Unknown location"
+                // 2) Place name from Nominatim (this is what should show in UI header)
+                val nominatimName = WeatherRepository.getPlaceName(lat, lon)
+                val finalLabel = nominatimName ?: weather.name
 
-                onLocationTextChanged?.invoke("Location: $placeName\n($lat, $lon)")
+                onPlaceLabelUpdated?.invoke(finalLabel)
+
+                onLocationTextChanged?.invoke("Location: $finalLabel\n($lat, $lon)")
             } catch (e: Exception) {
                 Log.e("HomePage", "Fetch failed: ${e.message}", e)
                 onWeatherError?.invoke(e.message ?: "Error")
