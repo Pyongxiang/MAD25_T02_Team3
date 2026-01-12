@@ -12,7 +12,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -20,7 +27,10 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -57,7 +67,7 @@ class HomePage : ComponentActivity() {
         setContent {
             var locationText by remember { mutableStateOf("Location not fetched yet") }
 
-            // ✅ This is the main label shown in the UI header (should come from Nominatim)
+            // This is the main label shown in the UI header
             var placeLabel by remember { mutableStateOf("—") }
 
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
@@ -71,8 +81,7 @@ class HomePage : ComponentActivity() {
 
             onLocationTextChanged = { newText -> locationText = newText }
 
-            // ✅ We no longer use response.name as the main place label.
-            // We only use it as a fallback if Nominatim fails.
+            // We only use response.name as a fallback
             onWeatherUpdated = { response ->
                 weatherError = null
                 weatherTemp = response.main.temp
@@ -82,7 +91,6 @@ class HomePage : ComponentActivity() {
                 weatherIconRes = pickWeatherIconById(first?.id)
 
                 if (placeLabel == "—" || placeLabel.isBlank()) {
-                    // fallback if we haven't got a place label yet
                     placeLabel = response.name
                 }
             }
@@ -123,7 +131,6 @@ class HomePage : ComponentActivity() {
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Header / hero section (Apple-like)
                     Column(
                         modifier = Modifier.padding(top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -134,7 +141,6 @@ class HomePage : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        // ✅ Use Nominatim placeLabel here (fixes “Chinese Garden stuck” look)
                         Text(
                             text = placeLabel,
                             color = Color.White,
@@ -170,7 +176,6 @@ class HomePage : ComponentActivity() {
                         }
                     }
 
-                    // Clickable "My Location" card -> opens 7-day forecast screen
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -178,7 +183,6 @@ class HomePage : ComponentActivity() {
                                 val intent = Intent(this@HomePage, ForecastActivity::class.java).apply {
                                     putExtra("lat", lastLat!!)
                                     putExtra("lon", lastLon!!)
-                                    // ✅ pass correct label
                                     putExtra("place", placeLabel)
                                 }
                                 startActivity(intent)
@@ -281,13 +285,11 @@ class HomePage : ComponentActivity() {
             onCoordsUpdated?.invoke(lat, lon)
 
             try {
-                // 1) Weather first (keeps your existing logic)
                 val weather = WeatherRepository.getCurrentWeather(lat, lon)
                 onWeatherUpdated?.invoke(weather)
 
-                // 2) Place name from Nominatim (this is what should show in UI header)
-                val nominatimName = WeatherRepository.getPlaceName(lat, lon)
-                val finalLabel = nominatimName ?: weather.name
+                val betterName = WeatherRepository.getPlaceName(lat, lon)
+                val finalLabel = betterName ?: weather.name
 
                 onPlaceLabelUpdated?.invoke(finalLabel)
 
