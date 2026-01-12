@@ -3,18 +3,40 @@ package np.ict.mad.madassg2025
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -22,6 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.max
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class ForecastActivity : ComponentActivity() {
 
@@ -62,10 +87,13 @@ private fun ForecastAppleLike(
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<WeatherForecast.ForecastResult?>(null) }
 
+    var selectedHourIndex by remember { mutableStateOf(0) }
+
     LaunchedEffect(lat, lon) {
         loading = true
         error = null
         result = null
+        selectedHourIndex = 0
 
         if (lat.isNaN() || lon.isNaN()) {
             loading = false
@@ -127,6 +155,10 @@ private fun ForecastAppleLike(
                         lo = lo
                     )
 
+                    val hourly = r.hourlyNext24
+                    val safeIndex = selectedHourIndex.coerceIn(0, max(0, hourly.size - 1))
+                    val selected = hourly.getOrNull(safeIndex)
+
                     FrostCard {
                         Text(
                             text = "Next 24 hours",
@@ -135,7 +167,21 @@ private fun ForecastAppleLike(
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(10.dp))
-                        HourlyRow(r.hourlyNext24)
+
+                        HourlyRowCompact(
+                            items = hourly,
+                            selectedIndex = safeIndex,
+                            onSelect = { selectedHourIndex = it }
+                        )
+
+                        if (hourly.size >= 2) {
+                            Spacer(Modifier.height(12.dp))
+                            TempSparkline(hourly.map { it.tempC })
+                        }
+                    }
+
+                    if (selected != null) {
+                        DetailsCardBelow(selected)
                     }
 
                     FrostCard {
@@ -162,7 +208,8 @@ private fun TopBar(place: String, onBack: () -> Unit) {
     ) {
         Card(
             modifier = Modifier
-                .size(42.dp)
+                .width(42.dp)
+                .height(42.dp)
                 .clickable { onBack() },
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
@@ -241,7 +288,11 @@ private fun FrostCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun HourlyRow(items: List<WeatherForecast.HourItem>) {
+private fun HourlyRowCompact(
+    items: List<WeatherForecast.HourItem>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
     val scroll = rememberScrollState()
     Row(
         modifier = Modifier
@@ -249,29 +300,161 @@ private fun HourlyRow(items: List<WeatherForecast.HourItem>) {
             .horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        items.forEach { h ->
+        items.forEachIndexed { idx, h ->
+            val selected = idx == selectedIndex
+
             Column(
-                modifier = Modifier.width(56.dp),
+                modifier = Modifier
+                    .width(56.dp)
+                    .clickable { onSelect(idx) },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
                     text = h.label,
-                    color = Color.White.copy(alpha = 0.80f),
+                    color = Color.White.copy(alpha = if (selected) 0.95f else 0.78f),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1
                 )
-                Text(
-                    text = pickEmojiIcon(h.weatherId),
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Text(
-                    text = "${h.tempC}°",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+
+                Card(
+                    modifier = Modifier.padding(top = 6.dp, bottom = 6.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = pickEmojiIcon(h.weatherId),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text(
+                            text = "${h.tempC}°",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                if (selected) {
+                    Spacer(
+                        modifier = Modifier
+                            .width(18.dp)
+                            .height(3.dp)
+                            .background(Color.White.copy(alpha = 0.65f), RoundedCornerShape(99.dp))
+                    )
+                } else {
+                    Spacer(modifier = Modifier.height(3.dp))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun TempSparkline(temps: List<Int>) {
+    val minT = temps.minOrNull() ?: return
+    val maxT = temps.maxOrNull() ?: return
+    val range = max(1, maxT - minT)
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(34.dp)
+            .background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        val w = size.width
+        val h = size.height
+
+        fun x(i: Int): Float = if (temps.size == 1) 0f else (i.toFloat() / (temps.size - 1)) * w
+        fun y(t: Int): Float {
+            val norm = (t - minT).toFloat() / range.toFloat()
+            return (1f - norm) * h
+        }
+
+        for (i in 0 until temps.size - 1) {
+            drawLine(
+                color = Color.White.copy(alpha = 0.55f),
+                start = Offset(x(i), y(temps[i])),
+                end = Offset(x(i + 1), y(temps[i + 1])),
+                strokeWidth = 3f
+            )
+        }
+
+        for (i in temps.indices) {
+            drawCircle(
+                color = Color.White.copy(alpha = 0.85f),
+                radius = 4f,
+                center = Offset(x(i), y(temps[i]))
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailsCardBelow(h: WeatherForecast.HourItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.08f))
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Details • ${h.label}",
+                color = Color.White.copy(alpha = 0.85f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                DetailStat(icon = "🌡️", label = "Feels like", value = "${h.feelsLikeC}°")
+                DetailStat(icon = "💧", label = "Humidity", value = "${h.humidityPct}%")
+                DetailStat(icon = "🌬️", label = "Wind", value = "${h.windSpeedMs.toInt()} m/s")
+            }
+
+            Text(
+                text = h.description.replaceFirstChar { it.uppercase() },
+                color = Color.White.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailStat(icon: String, label: String, value: String) {
+    Column(modifier = Modifier.width(92.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = icon)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                color = Color.White.copy(alpha = 0.70f),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = value,
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 

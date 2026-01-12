@@ -23,6 +23,9 @@ class WeatherForecast(
         val dtUtcSec: Long,
         val label: String,     // "Now", "2PM", etc.
         val tempC: Int,
+        val feelsLikeC: Int,
+        val humidityPct: Int,
+        val windSpeedMs: Double,
         val weatherId: Int,
         val description: String
     )
@@ -43,7 +46,7 @@ class WeatherForecast(
 
     /**
      * Uses OpenWeather 5 day / 3 hour forecast endpoint.
-     * Docs: /data/2.5/forecast provides forecast in 3-hour steps. :contentReference[oaicite:2]{index=2}
+     * Endpoint returns forecast points in 3-hour steps.
      */
     fun getHourly24AndDaily5(lat: Double, lon: Double): ForecastResult? {
         if (apiKey.isBlank() || apiKey.startsWith("PUT_")) return null
@@ -70,7 +73,7 @@ class WeatherForecast(
             val listArr = json.optJSONArray("list") ?: return null
             if (listArr.length() == 0) return null
 
-            // Build hourly next 24h: next 8 x 3-hour points
+            // Build "next 24h" as next 8 x 3-hour points
             val nowUtcSec = System.currentTimeMillis() / 1000L
             val hourlyItems = mutableListOf<HourItem>()
 
@@ -83,38 +86,41 @@ class WeatherForecast(
                 val item = listArr.optJSONObject(i) ?: continue
                 val dt = item.optLong("dt", 0L)
                 if (dt <= 0L) continue
-
-                // Take points from "now" onwards
                 if (dt < nowUtcSec) continue
 
                 val main = item.optJSONObject("main") ?: continue
                 val temp = main.optDouble("temp", Double.NaN)
+                val feels = main.optDouble("feels_like", Double.NaN)
+                val humidity = main.optInt("humidity", -1)
+
+                val wind = item.optJSONObject("wind")
+                val windSpeed = wind?.optDouble("speed", Double.NaN) ?: Double.NaN
+
                 val w0 = item.optJSONArray("weather")?.optJSONObject(0)
                 val wid = w0?.optInt("id", 0) ?: 0
                 val wdesc = w0?.optString("description", "") ?: ""
 
                 val localSec = dt + tzOffsetSec
-                val label = if (collected == 0) {
-                    "Now"
-                } else {
-                    hourFmt.format(Date(localSec * 1000L))
-                }
+                val label = if (collected == 0) "Now" else hourFmt.format(Date(localSec * 1000L))
 
                 hourlyItems.add(
                     HourItem(
                         dtUtcSec = dt,
                         label = label,
                         tempC = if (temp.isNaN()) 0 else temp.toInt(),
+                        feelsLikeC = if (feels.isNaN()) 0 else feels.toInt(),
+                        humidityPct = if (humidity < 0) 0 else humidity,
+                        windSpeedMs = if (windSpeed.isNaN()) 0.0 else windSpeed,
                         weatherId = wid,
                         description = wdesc
                     )
                 )
 
                 collected++
-                if (collected >= 8) break // 8 * 3h ≈ 24h
+                if (collected >= 8) break
             }
 
-            // Build daily next 5 days by grouping forecast points by local date
+            // Build daily next 5 days by grouping by local date
             data class Acc(
                 var low: Double = Double.POSITIVE_INFINITY,
                 var high: Double = Double.NEGATIVE_INFINITY,
@@ -159,7 +165,6 @@ class WeatherForecast(
                 acc.firstDtLocalSec = minOf(acc.firstDtLocalSec, localSec)
             }
 
-            // Convert grouped days to next 5 days, label "Today" for first
             val dailyItems = mutableListOf<DayItem>()
             val keys = accByDay.keys.toList()
             val maxDays = minOf(5, keys.size)
@@ -171,11 +176,7 @@ class WeatherForecast(
                 val dominantId = acc.weatherCounts.maxByOrNull { it.value }?.key ?: 0
                 val desc = acc.descById[dominantId] ?: ""
 
-                val dayLabel = if (idx == 0) {
-                    "Today"
-                } else {
-                    dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
-                }
+                val dayLabel = if (idx == 0) "Today" else dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
 
                 dailyItems.add(
                     DayItem(
