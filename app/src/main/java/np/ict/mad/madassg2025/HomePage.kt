@@ -9,7 +9,6 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -35,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,11 +50,18 @@ class HomePage : ComponentActivity() {
     private var onWeatherError: ((String) -> Unit)? = null
     private var onCoordsUpdated: ((Double, Double) -> Unit)? = null
     private var onPlaceLabelUpdated: ((String) -> Unit)? = null
+    private var onLoadingChanged: ((Boolean) -> Unit)? = null
+    private var onBeginFetchUiReset: (() -> Unit)? = null
 
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) fetchLocationAndWeather()
-            else onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
+            if (isGranted) {
+                fetchLocationAndWeather()
+            } else {
+                onLoadingChanged?.invoke(false)
+                onPlaceLabelUpdated?.invoke("—")
+                onLocationTextChanged?.invoke("Permission denied.\nPlease allow location to use this feature.")
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,32 +70,49 @@ class HomePage : ComponentActivity() {
         locationHelper = LocationHelper(applicationContext)
 
         setContent {
-            var locationText by remember { mutableStateOf("Location not fetched yet") }
+            var isLoading by remember { mutableStateOf(false) }
 
-            // This is the main label shown in the UI header
+            var locationText by remember { mutableStateOf("") }
+
+            // Main label shown in the UI header
             var placeLabel by remember { mutableStateOf("—") }
 
             var weatherTemp by remember { mutableStateOf<Double?>(null) }
             var weatherCondition by remember { mutableStateOf<String?>(null) }
             var weatherError by remember { mutableStateOf<String?>(null) }
-            var weatherIconRes by remember { mutableStateOf<Int?>(null) }
 
-            // Store last successful coordinates so the "My Location" card can open forecast screen
+            // Emoji "icon"
+            var weatherEmoji by remember { mutableStateOf<String?>(null) }
+
+            // Store last successful coordinates so the "Forecast" card can open forecast screen
             var lastLat by remember { mutableStateOf<Double?>(null) }
             var lastLon by remember { mutableStateOf<Double?>(null) }
 
+            onLoadingChanged = { loading -> isLoading = loading }
             onLocationTextChanged = { newText -> locationText = newText }
+            onPlaceLabelUpdated = { newLabel -> placeLabel = newLabel }
 
-            // We only use response.name as a fallback
+            onBeginFetchUiReset = {
+                // Important: clear old UI so previous location (e.g., Chinese Garden) doesn't flash
+                isLoading = true
+                placeLabel = "Loading…"
+                locationText = ""
+                weatherError = null
+                weatherTemp = null
+                weatherCondition = null
+                weatherEmoji = null
+            }
+
             onWeatherUpdated = { response ->
                 weatherError = null
                 weatherTemp = response.main.temp
 
                 val first = response.weather.firstOrNull()
                 weatherCondition = first?.description
-                weatherIconRes = pickWeatherIconById(first?.id)
+                weatherEmoji = pickWeatherEmojiById(first?.id)
 
-                if (placeLabel == "—" || placeLabel.isBlank()) {
+                // Fallback only (you later override using reverse-geocoding)
+                if (placeLabel == "—" || placeLabel.isBlank() || placeLabel == "Loading…") {
                     placeLabel = response.name
                 }
             }
@@ -99,16 +121,12 @@ class HomePage : ComponentActivity() {
                 weatherError = msg
                 weatherTemp = null
                 weatherCondition = null
-                weatherIconRes = null
+                weatherEmoji = null
             }
 
             onCoordsUpdated = { lat, lon ->
                 lastLat = lat
                 lastLon = lon
-            }
-
-            onPlaceLabelUpdated = { newLabel ->
-                placeLabel = newLabel
             }
 
             val bg = Brush.verticalGradient(
@@ -131,6 +149,7 @@ class HomePage : ComponentActivity() {
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // Header
                     Column(
                         modifier = Modifier.padding(top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -142,7 +161,7 @@ class HomePage : ComponentActivity() {
                         )
 
                         Text(
-                            text = placeLabel,
+                            text = placeLabel.ifBlank { "—" },
                             color = Color.White,
                             style = MaterialTheme.typography.headlineMedium,
                             maxLines = 1,
@@ -150,6 +169,14 @@ class HomePage : ComponentActivity() {
                         )
 
                         when {
+                            isLoading -> {
+                                Text(
+                                    text = "Loading…",
+                                    color = Color.White.copy(alpha = 0.80f),
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+
                             weatherError != null -> Text(
                                 text = "Error: $weatherError",
                                 color = Color.White.copy(alpha = 0.9f)
@@ -161,12 +188,24 @@ class HomePage : ComponentActivity() {
                             )
 
                             else -> {
-                                Text(
-                                    text = "${weatherTemp!!.toInt()}°",
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.displayLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = weatherEmoji ?: "",
+                                        modifier = Modifier.size(42.dp),
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.headlineMedium
+                                    )
+                                    Text(
+                                        text = "${weatherTemp!!.toInt()}°",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.displayLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
                                 Text(
                                     text = weatherCondition!!.replaceFirstChar { it.uppercase() },
                                     color = Color.White.copy(alpha = 0.85f),
@@ -176,10 +215,11 @@ class HomePage : ComponentActivity() {
                         }
                     }
 
+                    // Forecast card (tap to open ForecastActivity)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = (lastLat != null && lastLon != null)) {
+                            .clickable(enabled = (lastLat != null && lastLon != null && !isLoading)) {
                                 val intent = Intent(this@HomePage, ForecastActivity::class.java).apply {
                                     putExtra("lat", lastLat!!)
                                     putExtra("lon", lastLon!!)
@@ -203,20 +243,23 @@ class HomePage : ComponentActivity() {
                             )
 
                             Text(
-                                text = if (lastLat == null) "Load location to view forecast"
-                                else "Tap to view the next 7 days",
+                                text = when {
+                                    isLoading -> "Fetching your location…"
+                                    lastLat == null -> "Load location to view forecast"
+                                    else -> "Tap to view the next 7 days"
+                                },
                                 color = Color.White.copy(alpha = 0.75f)
                             )
 
-                            if (weatherIconRes != null && weatherTemp != null) {
+                            if (!isLoading && weatherTemp != null) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Image(
-                                        painter = painterResource(id = weatherIconRes!!),
-                                        contentDescription = "Weather icon",
-                                        modifier = Modifier.size(40.dp)
+                                    Text(
+                                        text = weatherEmoji ?: "",
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.headlineSmall
                                     )
                                     Text(
                                         text = "${weatherTemp!!.toInt()}°C",
@@ -227,11 +270,14 @@ class HomePage : ComponentActivity() {
                                 }
                             }
 
-                            Text(
-                                text = locationText,
-                                color = Color.White.copy(alpha = 0.80f),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                            // Show coords / resolved label only when we actually have it
+                            if (!isLoading && locationText.isNotBlank()) {
+                                Text(
+                                    text = locationText,
+                                    color = Color.White.copy(alpha = 0.80f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
                         }
                     }
 
@@ -247,6 +293,8 @@ class HomePage : ComponentActivity() {
                             if (status == PackageManager.PERMISSION_GRANTED) {
                                 fetchLocationAndWeather()
                             } else {
+                                // Don’t flash old data while permission dialog is shown
+                                onBeginFetchUiReset?.invoke()
                                 locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                             }
                         }
@@ -269,28 +317,28 @@ class HomePage : ComponentActivity() {
         }
 
         lifecycleScope.launch {
-            onLocationTextChanged?.invoke("Getting fresh location...")
-
-            val location: Location? = locationHelper.getFreshLocation()
-            if (location == null) {
-                onLocationTextChanged?.invoke("Location: Unknown\n(Unable to get location)")
-                onWeatherError?.invoke("No location fix")
-                return@launch
-            }
-
-            val lat = location.latitude
-            val lon = location.longitude
-            Log.d("HomePage", "Using coords lat=$lat lon=$lon")
-
-            onCoordsUpdated?.invoke(lat, lon)
+            onBeginFetchUiReset?.invoke()
 
             try {
-                val weather: WeatherResponse? = WeatherRepository.getCurrentWeather(lat, lon)
+                val location: Location? = locationHelper.getFreshLocation()
+                if (location == null) {
+                    onWeatherError?.invoke("No location fix")
+                    onPlaceLabelUpdated?.invoke("—")
+                    onLocationTextChanged?.invoke("Unable to get location.")
+                    return@launch
+                }
 
-                // ✅ NULL-SAFETY: handle API failures cleanly
+                val lat = location.latitude
+                val lon = location.longitude
+                Log.d("HomePage", "Using coords lat=$lat lon=$lon")
+
+                onCoordsUpdated?.invoke(lat, lon)
+
+                val weather: WeatherResponse? = WeatherRepository.getCurrentWeather(lat, lon)
                 if (weather == null) {
                     onWeatherError?.invoke("Weather unavailable (API returned null)")
-                    onLocationTextChanged?.invoke("Location: Unknown\n($lat, $lon)")
+                    onPlaceLabelUpdated?.invoke("—")
+                    onLocationTextChanged?.invoke("($lat, $lon)")
                     return@launch
                 }
 
@@ -304,20 +352,26 @@ class HomePage : ComponentActivity() {
             } catch (e: Exception) {
                 Log.e("HomePage", "Fetch failed: ${e.message}", e)
                 onWeatherError?.invoke(e.message ?: "Error")
-                onLocationTextChanged?.invoke("Location: Unknown location\n($lat, $lon)")
+                onPlaceLabelUpdated?.invoke("—")
+                onLocationTextChanged?.invoke("Unable to load location/weather.")
+            } finally {
+                onLoadingChanged?.invoke(false)
             }
         }
     }
 }
 
-private fun pickWeatherIconById(weatherId: Int?): Int {
+private fun pickWeatherEmojiById(weatherId: Int?): String {
     return when (weatherId) {
-        in 200..232 -> R.drawable.ic_rainy
-        in 300..531 -> R.drawable.ic_rainy
-        in 600..622 -> R.drawable.ic_cloudy
-        in 701..781 -> R.drawable.ic_cloudy
-        800 -> R.drawable.ic_sunny
-        in 801..804 -> R.drawable.ic_cloudy
-        else -> R.drawable.ic_cloudy
+        in 200..232 -> "⛈️"   // thunderstorm
+        in 300..321 -> "🌦️"   // drizzle
+        in 500..504 -> "🌧️"   // rain
+        511 -> "🌨️"           // freezing rain
+        in 520..531 -> "🌧️"   // shower rain
+        in 600..622 -> "❄️"   // snow
+        in 701..781 -> "🌫️"   // mist / fog / haze / etc
+        800 -> "☀️"           // clear
+        in 801..804 -> "☁️"   // clouds
+        else -> "🌡️"
     }
 }

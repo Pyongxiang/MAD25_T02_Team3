@@ -6,7 +6,13 @@ import android.location.Location
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.google.android.gms.location.*
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationAvailability
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -15,10 +21,6 @@ class LocationHelper(context: Context) {
     private val client: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    /**
-     * Forces a fresh location fix (not cached "last known").
-     * Includes a timeout so the app doesn't hang forever when GPS/location is unavailable.
-     */
     @SuppressLint("MissingPermission")
     suspend fun getFreshLocation(timeoutMs: Long = 6000L): Location? =
         suspendCancellableCoroutine { cont ->
@@ -31,11 +33,20 @@ class LocationHelper(context: Context) {
                 .setMaxUpdates(1)
                 .build()
 
+            val handler = Handler(Looper.getMainLooper())
+
+            // Make timeoutRunnable exist before callback references it
+            var timeoutRunnable: Runnable? = null
+
             val callback = object : LocationCallback() {
                 override fun onLocationResult(result: LocationResult) {
                     val loc = result.lastLocation
                     Log.d("LocationHelper", "Fresh location: ${loc?.latitude}, ${loc?.longitude}")
+
+                    // Stop timeout + updates
+                    timeoutRunnable?.let { handler.removeCallbacks(it) }
                     client.removeLocationUpdates(this)
+
                     if (cont.isActive) cont.resume(loc)
                 }
 
@@ -44,8 +55,7 @@ class LocationHelper(context: Context) {
                 }
             }
 
-            val handler = Handler(Looper.getMainLooper())
-            val timeoutRunnable = Runnable {
+            timeoutRunnable = Runnable {
                 Log.e("LocationHelper", "Timeout waiting for location fix.")
                 client.removeLocationUpdates(callback)
                 if (cont.isActive) cont.resume(null)
@@ -55,17 +65,17 @@ class LocationHelper(context: Context) {
             client.requestLocationUpdates(request, callback, Looper.getMainLooper())
                 .addOnFailureListener { e ->
                     Log.e("LocationHelper", "requestLocationUpdates failed: ${e.message}", e)
-                    handler.removeCallbacks(timeoutRunnable)
+                    timeoutRunnable?.let { handler.removeCallbacks(it) }
                     client.removeLocationUpdates(callback)
                     if (cont.isActive) cont.resume(null)
                 }
 
             // Timeout if no fix arrives
-            handler.postDelayed(timeoutRunnable, timeoutMs)
+            handler.postDelayed(timeoutRunnable!!, timeoutMs)
 
             // Cleanup if coroutine cancelled
             cont.invokeOnCancellation {
-                handler.removeCallbacks(timeoutRunnable)
+                timeoutRunnable?.let { handler.removeCallbacks(it) }
                 client.removeLocationUpdates(callback)
             }
         }
