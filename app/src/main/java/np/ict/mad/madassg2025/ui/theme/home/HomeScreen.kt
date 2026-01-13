@@ -2,6 +2,7 @@ package np.ict.mad.madassg2025.ui.home
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +46,8 @@ data class HomeActions(
     val onUseMyLocation: () -> Unit,
     val onOpenForecast: () -> Unit,
     val onSelectSaved: (SavedLocation) -> Unit,
-    val onAddCurrent: () -> Unit
+    val onAddCurrent: () -> Unit,
+    val onRemoveSaved: (SavedLocation) -> Unit
 )
 
 @Composable
@@ -145,12 +147,12 @@ fun HomeScreen(
                     )
                 }
 
-                // Saved locations row
-                SavedLocationsRow(
-                    saved = state.savedLocations,
-                    currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" },
-                    onSelect = actions.onSelectSaved,
-                    onAddCurrent = actions.onAddCurrent
+                // NEW: split saving UI into a "My Location" row, then Favourites under it
+                SavedLocationsSection(
+                    state = state,
+                    onAddCurrent = actions.onAddCurrent,
+                    onSelectSaved = actions.onSelectSaved,
+                    onRemoveSaved = actions.onRemoveSaved
                 )
 
                 // Forecast card (balanced left/right + skeleton)
@@ -168,6 +170,114 @@ fun HomeScreen(
                     Text("Use My Location")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SavedLocationsSection(
+    state: HomeUiState,
+    onAddCurrent: () -> Unit,
+    onSelectSaved: (SavedLocation) -> Unit,
+    onRemoveSaved: (SavedLocation) -> Unit
+) {
+    val currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" }
+    val scroll1 = rememberScrollState()
+    val scroll2 = rememberScrollState()
+
+    // Row 1: "My Location" + Save
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(scroll1),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!currentLabel.isNullOrBlank()) {
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("📍", color = Color.White)
+                    Text(
+                        text = currentLabel,
+                        color = Color.White.copy(alpha = 0.90f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier.clickable { onAddCurrent() },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+            ) {
+                Text(
+                    text = "＋ Save",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+
+    // Row 2: Favourites
+    if (state.savedLocations.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = "Favourites",
+                color = Color.White.copy(alpha = 0.75f),
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(scroll2),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                state.savedLocations.forEach { loc ->
+                    Card(
+                        modifier = Modifier.combinedClickable(
+                            onClick = { onSelectSaved(loc) },
+                            onLongClick = { onRemoveSaved(loc) } // long-press to remove
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("★", color = Color.White.copy(alpha = 0.85f))
+                            Text(
+                                text = loc.name,
+                                color = Color.White.copy(alpha = 0.88f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = "Tip: long-press a favourite to remove",
+                color = Color.White.copy(alpha = 0.55f),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -354,77 +464,6 @@ private fun UnitChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SavedLocationsRow(
-    saved: List<SavedLocation>,
-    currentLabel: String?,
-    onSelect: (SavedLocation) -> Unit,
-    onAddCurrent: () -> Unit
-) {
-    val scroll = rememberScrollState()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(scroll),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (!currentLabel.isNullOrBlank()) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("📍", color = Color.White)
-                    Text(
-                        text = currentLabel,
-                        color = Color.White.copy(alpha = 0.90f),
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.clickable { onAddCurrent() },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-            ) {
-                Text(
-                    text = "＋ Save",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        saved.forEach { loc ->
-            Card(
-                modifier = Modifier.clickable { onSelect(loc) },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-            ) {
-                Text(
-                    text = loc.name,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    color = Color.White.copy(alpha = 0.88f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun SkeletonLine(widthDp: Int, heightDp: Int) {
     Card(
         modifier = Modifier
@@ -435,6 +474,12 @@ private fun SkeletonLine(widthDp: Int, heightDp: Int) {
     ) {}
 }
 
+/**
+ * UPDATED: softer day/dawn/dusk glow that doesn't overpower cards.
+ * - Glow is off-screen/top-right
+ * - Lower alpha
+ * - No big orange circles in the middle
+ */
 @Composable
 private fun DynamicSkyBackground(modifier: Modifier, mode: SkyMode) {
     val base = when (mode) {
@@ -442,31 +487,47 @@ private fun DynamicSkyBackground(modifier: Modifier, mode: SkyMode) {
             listOf(Color(0xFF07101E), Color(0xFF0B1730), Color(0xFF0F2240))
         )
         SkyMode.DAWN -> Brush.verticalGradient(
-            listOf(Color(0xFF0B1530), Color(0xFF3A3F7A), Color(0xFFB56A5A))
+            listOf(Color(0xFF0B1530), Color(0xFF2E3A70), Color(0xFF6B5A78))
         )
         SkyMode.DAY -> Brush.verticalGradient(
             listOf(Color(0xFF0B2447), Color(0xFF0E2E5A), Color(0xFF123667))
         )
         SkyMode.DUSK -> Brush.verticalGradient(
-            listOf(Color(0xFF0B1530), Color(0xFF3A2F6A), Color(0xFF7A4A5A))
+            listOf(Color(0xFF0B1530), Color(0xFF2D2A60), Color(0xFF5A3A66))
         )
     }
 
     Box(modifier = modifier.background(base)) {
-        // Sun glow
-        if (mode == SkyMode.DAWN || mode == SkyMode.DAY || mode == SkyMode.DUSK) {
+
+        // Soft glow in dawn/day/dusk (top-right, subtle)
+        if (mode != SkyMode.NIGHT) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val center = Offset(size.width * 0.25f, size.height * 0.18f)
-                val radius = size.minDimension * 0.55f
+                val cx = size.width * 1.05f // off-screen to the right
+                val cy = size.height * 0.08f
+                val r = size.minDimension * 0.55f
+
+                val glowA = when (mode) {
+                    SkyMode.DAY -> 0.10f
+                    SkyMode.DAWN -> 0.13f
+                    SkyMode.DUSK -> 0.12f
+                    else -> 0f
+                }
+
+                // Layered soft circles to simulate a gentle sun glow
                 drawCircle(
-                    color = Color(0xFFFFD08A).copy(alpha = if (mode == SkyMode.DAY) 0.18f else 0.24f),
-                    radius = radius,
-                    center = center
+                    color = Color(0xFFFFE2B8).copy(alpha = glowA),
+                    radius = r,
+                    center = Offset(cx, cy)
                 )
                 drawCircle(
-                    color = Color(0xFFFF9B7A).copy(alpha = if (mode == SkyMode.DAWN) 0.20f else 0.10f),
-                    radius = radius * 0.70f,
-                    center = center
+                    color = Color(0xFFFFC6A3).copy(alpha = glowA * 0.75f),
+                    radius = r * 0.70f,
+                    center = Offset(cx, cy)
+                )
+                drawCircle(
+                    color = Color(0xFFFFAFA0).copy(alpha = glowA * 0.45f),
+                    radius = r * 0.48f,
+                    center = Offset(cx, cy)
                 )
             }
         }

@@ -50,7 +50,6 @@ class HomePage : ComponentActivity() {
 
         locationHelper = LocationHelper(applicationContext)
 
-        // Load persisted prefs (unit + saved locations)
         val userKey = buildUserKey(firebaseHelper)
         uiState = uiState.copy(
             unit = loadUnitPref(),
@@ -68,7 +67,8 @@ class HomePage : ComponentActivity() {
                     onUseMyLocation = { useMyLocation() },
                     onOpenForecast = { openForecastIfPossible() },
                     onSelectSaved = { loc -> fetchWeatherForSaved(loc) },
-                    onAddCurrent = { addCurrentToSaved() }
+                    onAddCurrent = { addCurrentToSaved() },
+                    onRemoveSaved = { loc -> removeSaved(loc) }
                 )
             )
         }
@@ -82,7 +82,6 @@ class HomePage : ComponentActivity() {
         if (status == PackageManager.PERMISSION_GRANTED) {
             fetchLocationAndWeather()
         } else {
-            // reset first so old place doesn't flash
             uiState = uiState.copy(
                 isLoading = true,
                 error = null,
@@ -255,6 +254,15 @@ class HomePage : ComponentActivity() {
             .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
             .take(12)
 
+        uiState = uiState.copy(savedLocations = updated)
+        saveSavedLocations(userKey, updated)
+    }
+
+    private fun removeSaved(loc: SavedLocation) {
+        val userKey = buildUserKey(firebaseHelper)
+        val updated = uiState.savedLocations.filterNot {
+            it.name == loc.name && it.lat == loc.lat && it.lon == loc.lon
+        }
         uiState = uiState.copy(savedLocations = updated)
         saveSavedLocations(userKey, updated)
     }
