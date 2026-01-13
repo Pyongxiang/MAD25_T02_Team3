@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -44,7 +46,9 @@ data class HomeActions(
     val onUseMyLocation: () -> Unit,
     val onOpenForecast: () -> Unit,
 
-    // favourites
+    val onSearchQueryChange: (String) -> Unit,
+    val onPickSearchResult: (PlaceSuggestion) -> Unit,
+
     val onSelectSaved: (SavedLocation) -> Unit,
     val onAddCurrent: () -> Unit,
     val onRemoveSaved: (SavedLocation) -> Unit
@@ -57,10 +61,7 @@ fun HomeScreen(
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
         Box(modifier = Modifier.fillMaxSize()) {
-            DynamicSkyBackground(
-                modifier = Modifier.fillMaxSize(),
-                mode = state.skyMode
-            )
+            DynamicSkyBackground(modifier = Modifier.fillMaxSize(), mode = state.skyMode)
 
             Column(
                 modifier = Modifier
@@ -68,17 +69,14 @@ fun HomeScreen(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Header + units toggle
+                // Header + unit toggle
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 10.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = "My Location",
                             color = Color.White.copy(alpha = 0.85f),
@@ -114,10 +112,7 @@ fun HomeScreen(
 
                             else -> {
                                 val tempShown = formatTemp(state.tempC, state.unit)
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     Text(
                                         text = pickWeatherEmojiById(state.weatherId),
                                         modifier = Modifier.size(42.dp),
@@ -144,14 +139,27 @@ fun HomeScreen(
                     UnitsToggle(unit = state.unit, onChange = actions.onToggleUnit)
                 }
 
-                // My Location quick row + Save
+                // ✅ NEW: Top “details” (instead of bottom Forecast card)
+                TopDetailsAndForecast(
+                    state = state,
+                    onOpenForecast = actions.onOpenForecast
+                )
+
+                // My location + save
                 MyLocationRow(
                     currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" },
                     canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
                     onAddCurrent = actions.onAddCurrent
                 )
 
-                // ✅ Stacked favourites cards (always visible when savedLocations not empty)
+                // ✅ NEW: Search bar + results (tap to add to favourites)
+                SearchSection(
+                    state = state,
+                    onQueryChange = actions.onSearchQueryChange,
+                    onPick = actions.onPickSearchResult
+                )
+
+                // Stacked favourites cards
                 FavouritesStack(
                     saved = state.savedLocations,
                     miniMap = state.favouritesMini,
@@ -160,15 +168,9 @@ fun HomeScreen(
                     onRemove = actions.onRemoveSaved
                 )
 
-                // Forecast card
-                ForecastCard(state = state, onOpenForecast = actions.onOpenForecast)
-
                 Spacer(modifier = Modifier.weight(1f))
 
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = actions.onUseMyLocation
-                ) {
+                Button(modifier = Modifier.fillMaxWidth(), onClick = actions.onUseMyLocation) {
                     Text("Use My Location")
                 }
             }
@@ -177,11 +179,131 @@ fun HomeScreen(
 }
 
 @Composable
-private fun MyLocationRow(
-    currentLabel: String?,
-    canSave: Boolean,
-    onAddCurrent: () -> Unit
+private fun TopDetailsAndForecast(state: HomeUiState, onOpenForecast: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val timeStr = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+                Text(
+                    text = "Updated $timeStr",
+                    color = Color.White.copy(alpha = 0.70f),
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                if (!state.isLoading && state.sunriseUtc != null && state.sunsetUtc != null && state.tzOffsetSec != null) {
+                    val sunrise = formatLocalTime(state.sunriseUtc, state.tzOffsetSec)
+                    val sunset = formatLocalTime(state.sunsetUtc, state.tzOffsetSec)
+                    Text("🌅 Sunrise $sunrise", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                    Text("🌇 Sunset $sunset", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text("Sunrise/Sunset: —", color = Color.White.copy(alpha = 0.70f), style = MaterialTheme.typography.bodySmall)
+                }
+
+                if (!state.isLoading && state.locationText.isNotBlank()) {
+                    Text(
+                        text = state.locationText,
+                        color = Color.White.copy(alpha = 0.70f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier.clickable(enabled = state.canOpenForecast) { onOpenForecast() },
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+            ) {
+                Text(
+                    text = "View 7-day",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    color = Color.White.copy(alpha = if (state.canOpenForecast) 0.90f else 0.45f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchSection(
+    state: HomeUiState,
+    onQueryChange: (String) -> Unit,
+    onPick: (PlaceSuggestion) -> Unit
 ) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = state.searchQuery,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Search a place (e.g. Holland Village)", color = Color.White.copy(alpha = 0.55f)) },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.White.copy(alpha = 0.25f),
+                unfocusedBorderColor = Color.White.copy(alpha = 0.18f),
+                focusedTextColor = Color.White,
+                unfocusedTextColor = Color.White,
+                cursorColor = Color.White,
+                focusedContainerColor = Color.White.copy(alpha = 0.08f),
+                unfocusedContainerColor = Color.White.copy(alpha = 0.08f)
+            )
+        )
+
+        if (state.searchLoading) {
+            Text("Searching…", color = Color.White.copy(alpha = 0.70f), style = MaterialTheme.typography.bodySmall)
+        } else if (state.searchError != null) {
+            Text("Search error: ${state.searchError}", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
+        }
+
+        // Results list
+        state.searchResults.forEach { r ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onPick(r) },
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("＋", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = r.displayLabel,
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "(${r.lat}, ${r.lon})",
+                            color = Color.White.copy(alpha = 0.60f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyLocationRow(currentLabel: String?, canSave: Boolean, onAddCurrent: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (!currentLabel.isNullOrBlank()) {
             Card(
@@ -232,13 +354,8 @@ private fun FavouritesStack(
     if (saved.isEmpty()) return
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "Favourites",
-            color = Color.White.copy(alpha = 0.75f),
-            style = MaterialTheme.typography.bodySmall
-        )
+        Text("Favourites", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
 
-        // stacked cards
         saved.forEach { loc ->
             val key = favKey(loc)
             val mini = miniMap[key]
@@ -246,17 +363,11 @@ private fun FavouritesStack(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .combinedClickable(
-                        onClick = { onSelect(loc) },
-                        onLongClick = { onRemove(loc) }
-                    ),
+                    .combinedClickable(onClick = { onSelect(loc) }, onLongClick = { onRemove(loc) }),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = loc.name,
@@ -284,119 +395,19 @@ private fun FavouritesStack(
                     Spacer(Modifier.width(12.dp))
 
                     Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = pickWeatherEmojiById(mini?.weatherId),
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                        Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
                         val tempText = when {
                             mini == null || mini.isLoading || mini.tempC == null -> "—"
                             unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
                             else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
                         }
-                        Text(
-                            text = tempText,
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Text(tempText, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
         }
 
-        Text(
-            text = "Tip: long-press a card to remove",
-            color = Color.White.copy(alpha = 0.55f),
-            style = MaterialTheme.typography.bodySmall
-        )
-    }
-}
-
-@Composable
-private fun ForecastCard(state: HomeUiState, onOpenForecast: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = state.canOpenForecast) { onOpenForecast() },
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = "Forecast (7 days)",
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.titleSmall
-                )
-
-                Text(
-                    text = when {
-                        state.isLoading -> "Fetching your location…"
-                        state.lastLat == null -> "Load location to view forecast"
-                        else -> "Tap to view the next 7 days"
-                    },
-                    color = Color.White.copy(alpha = 0.75f),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-
-                if (!state.isLoading && state.tempC != null && state.weatherId != null) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = pickWeatherEmojiById(state.weatherId),
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                        Text(
-                            text = formatTemp(state.tempC, state.unit) + " " + state.unit.label,
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.End
-            ) {
-                val timeStr = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                Text(
-                    text = "Updated $timeStr",
-                    color = Color.White.copy(alpha = 0.70f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                if (!state.isLoading && state.sunriseUtc != null && state.sunsetUtc != null && state.tzOffsetSec != null) {
-                    val sunrise = formatLocalTime(state.sunriseUtc, state.tzOffsetSec)
-                    val sunset = formatLocalTime(state.sunsetUtc, state.tzOffsetSec)
-                    Text("🌅 $sunrise", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                    Text("🌇 $sunset", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                }
-
-                if (!state.isLoading && state.locationText.isNotBlank()) {
-                    Text(
-                        text = state.locationText,
-                        color = Color.White.copy(alpha = 0.70f),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
+        Text("Tip: long-press a card to remove", color = Color.White.copy(alpha = 0.55f), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -432,46 +443,19 @@ private fun formatLocalTime(utcEpochSec: Long, tzOffsetSec: Int): String {
 }
 
 /**
- * (Your improved subtle glow + stars background)
- * Keeping it as-is from your latest working version.
+ * Keep your current background implementation here.
+ * (If you already updated it, paste yours in—this file will compile as long as the function exists.)
  */
 @Composable
 private fun DynamicSkyBackground(modifier: Modifier, mode: SkyMode) {
     val base = when (mode) {
-        SkyMode.NIGHT -> Brush.verticalGradient(
-            listOf(Color(0xFF07101E), Color(0xFF0B1730), Color(0xFF0F2240))
-        )
-        SkyMode.DAWN -> Brush.verticalGradient(
-            listOf(Color(0xFF0B1530), Color(0xFF2E3A70), Color(0xFF6B5A78))
-        )
-        SkyMode.DAY -> Brush.verticalGradient(
-            listOf(Color(0xFF0B2447), Color(0xFF0E2E5A), Color(0xFF123667))
-        )
-        SkyMode.DUSK -> Brush.verticalGradient(
-            listOf(Color(0xFF0B1530), Color(0xFF2D2A60), Color(0xFF5A3A66))
-        )
+        SkyMode.NIGHT -> Brush.verticalGradient(listOf(Color(0xFF07101E), Color(0xFF0B1730), Color(0xFF0F2240)))
+        SkyMode.DAWN -> Brush.verticalGradient(listOf(Color(0xFF0B1530), Color(0xFF2E3A70), Color(0xFF6B5A78)))
+        SkyMode.DAY -> Brush.verticalGradient(listOf(Color(0xFF0B2447), Color(0xFF0E2E5A), Color(0xFF123667)))
+        SkyMode.DUSK -> Brush.verticalGradient(listOf(Color(0xFF0B1530), Color(0xFF2D2A60), Color(0xFF5A3A66)))
     }
 
     Box(modifier = modifier.background(base)) {
-        if (mode != SkyMode.NIGHT) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val cx = size.width * 1.05f
-                val cy = size.height * 0.08f
-                val r = size.minDimension * 0.55f
-
-                val glowA = when (mode) {
-                    SkyMode.DAY -> 0.10f
-                    SkyMode.DAWN -> 0.13f
-                    SkyMode.DUSK -> 0.12f
-                    else -> 0f
-                }
-
-                drawCircle(Color(0xFFFFE2B8).copy(alpha = glowA), r, Offset(cx, cy))
-                drawCircle(Color(0xFFFFC6A3).copy(alpha = glowA * 0.75f), r * 0.70f, Offset(cx, cy))
-                drawCircle(Color(0xFFFFAFA0).copy(alpha = glowA * 0.45f), r * 0.48f, Offset(cx, cy))
-            }
-        }
-
         if (mode == SkyMode.NIGHT) {
             val seed = remember { (System.currentTimeMillis() / 1000L).toInt() }
             val stars = remember(seed) {
@@ -503,10 +487,7 @@ private data class Star(val x: Float, val y: Float, val r: Float, val a: Float)
 
 @Composable
 private fun UnitsToggle(unit: UnitPref, onChange: (UnitPref) -> Unit) {
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-    ) {
+    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))) {
         Row(
             modifier = Modifier.padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -523,9 +504,7 @@ private fun UnitChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier.clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent
-        )
+        colors = CardDefaults.cardColors(containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent)
     ) {
         Text(
             text = label,

@@ -13,11 +13,19 @@ data class MiniWeatherUi(
     val isLoading: Boolean = true
 )
 
-enum class UnitPref(val label: String) {
-    C("°C"),
-    F("°F")
+data class PlaceSuggestion(
+    val name: String,
+    val state: String?,
+    val country: String?,
+    val lat: Double,
+    val lon: Double
+) {
+    val displayLabel: String
+        get() = listOfNotNull(name.takeIf { it.isNotBlank() }, state?.takeIf { it.isNotBlank() }, country?.takeIf { it.isNotBlank() })
+            .joinToString(", ")
 }
 
+enum class UnitPref(val label: String) { C("°C"), F("°F") }
 enum class SkyMode { NIGHT, DAWN, DAY, DUSK }
 
 data class HomeUiState(
@@ -27,12 +35,10 @@ data class HomeUiState(
     val placeLabel: String = "—",
     val locationText: String = "",
 
-    // Current weather (for the selected/current location)
     val tempC: Double? = null,
     val condition: String? = null,
     val weatherId: Int? = null,
 
-    // Sunrise/sunset from current weather
     val sunriseUtc: Long? = null,
     val sunsetUtc: Long? = null,
     val tzOffsetSec: Int? = null,
@@ -42,11 +48,14 @@ data class HomeUiState(
     val lastLat: Double? = null,
     val lastLon: Double? = null,
 
-    // Saved locations list
     val savedLocations: List<SavedLocation> = emptyList(),
-
-    // ✅ NEW: mini weather for each saved location card (keyed by "name|lat|lon")
     val favouritesMini: Map<String, MiniWeatherUi> = emptyMap(),
+
+    // ✅ NEW: search state
+    val searchQuery: String = "",
+    val searchLoading: Boolean = false,
+    val searchError: String? = null,
+    val searchResults: List<PlaceSuggestion> = emptyList(),
 
     val skyMode: SkyMode = SkyMode.NIGHT
 ) {
@@ -56,9 +65,6 @@ data class HomeUiState(
 
 fun favKey(loc: SavedLocation): String = "${loc.name}|${loc.lat}|${loc.lon}"
 
-/**
- * Uses sunrise/sunset if available; otherwise falls back to device clock.
- */
 fun computeSkyMode(
     nowUtcSec: Long,
     sunriseUtcSec: Long?,

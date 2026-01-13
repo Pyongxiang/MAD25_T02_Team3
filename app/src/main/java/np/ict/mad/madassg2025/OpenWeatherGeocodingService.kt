@@ -12,10 +12,18 @@ data class ReverseGeoResult(
     val state: String?
 )
 
+data class DirectGeoResult(
+    val name: String?,
+    val local_names: Map<String, String>?,
+    val lat: Double?,
+    val lon: Double?,
+    val country: String?,
+    val state: String?
+)
+
 interface OpenWeatherGeocodingService {
 
     // Reverse geocoding: lat/lon -> place name
-    // Docs: OpenWeather Geocoding API supports reverse geocoding. :contentReference[oaicite:3]{index=3}
     @GET("geo/1.0/reverse")
     suspend fun reverseGeocode(
         @Query("lat") lat: Double,
@@ -23,4 +31,12 @@ interface OpenWeatherGeocodingService {
         @Query("limit") limit: Int = 1,
         @Query("appid") apiKey: String
     ): List<ReverseGeoResult>
+
+    // ✅ Direct geocoding: query -> list of matching places
+    @GET("geo/1.0/direct")
+    suspend fun directGeocode(
+        @Query("q") query: String,
+        @Query("limit") limit: Int = 5,
+        @Query("appid") apiKey: String
+    ): List<DirectGeoResult>
 }

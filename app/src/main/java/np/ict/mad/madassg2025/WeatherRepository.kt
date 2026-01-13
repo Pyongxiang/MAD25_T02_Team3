@@ -23,8 +23,9 @@ object WeatherRepository {
     private const val BASE_URL = "https://api.openweathermap.org/"
     private const val NOMINATIM_BASE = "https://nominatim.openstreetmap.org/reverse"
     private const val OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-    private val OPEN_WEATHER_API_KEY: String
-        get() = ApiConfig.OPEN_WEATHER_API_KEY
+
+    // 🔑 Replace with your real key or BuildConfig value
+    private const val OPEN_WEATHER_API_KEY = "e25a0c31ecc92cc51c1c7548568af374"
 
     private const val VENUE_RADIUS_M = 350.0
     private const val MAX_VENUE_DISTANCE_M = 600.0
@@ -40,6 +41,7 @@ object WeatherRepository {
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(okHttp)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
@@ -48,6 +50,12 @@ object WeatherRepository {
         retrofit.create(WeatherApiService::class.java)
     }
 
+    // ✅ OpenWeather Geocoding API (direct + reverse)
+    private val geocodingApi: OpenWeatherGeocodingService by lazy {
+        retrofit.create(OpenWeatherGeocodingService::class.java)
+    }
+
+    // Current weather (coords)
     suspend fun getCurrentWeather(lat: Double, lon: Double): WeatherResponse? =
         withContext(Dispatchers.IO) {
             try {
@@ -56,11 +64,28 @@ object WeatherRepository {
                     lon = lon,
                     apiKey = OPEN_WEATHER_API_KEY
                 )
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
 
+    // ✅ Search places (forward geocode)
+    suspend fun searchPlaces(query: String, limit: Int = 5): List<DirectGeoResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                geocodingApi.directGeocode(
+                    query = query,
+                    limit = limit,
+                    apiKey = OPEN_WEATHER_API_KEY
+                )
+            } catch (_: Exception) {
+                emptyList()
+            }
+        }
+
+    /**
+     * Reverse geocode using Nominatim + Overpass heuristic
+     */
     suspend fun getPlaceName(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
 
@@ -78,28 +103,21 @@ object WeatherRepository {
                 .header("User-Agent", "MADAssg2025/1.0 (student project)")
                 .build()
 
-            val resp = try {
-                okHttp.newCall(req).execute()
-            } catch (e: Exception) {
-                null
-            } ?: return@withContext null
+            okHttp.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
 
-            resp.use { r ->
-                if (!r.isSuccessful) return@withContext null
-
-                val bodyStr = r.body()?.string()?.takeIf { it.isNotBlank() }
-                    ?: return@withContext null
+                // ✅ OkHttp 3.x: use resp.body() not resp.body
+                val bodyStr = resp.body()?.string() ?: return@withContext null
 
                 val json = JSONObject(bodyStr)
-
-                val displayName = json.optString("display_name", "")
                 val address = json.optJSONObject("address")
+                val displayName = json.optString("display_name", "")
 
-                val name = json.optString("name", "").trim()
-                val amenity = address?.optString("amenity")?.trim().orEmpty()
-                val tourism = address?.optString("tourism")?.trim().orEmpty()
-                val shop = address?.optString("shop")?.trim().orEmpty()
-                val building = address?.optString("building")?.trim().orEmpty()
+                val name = address?.optString("attraction") ?: ""
+                val amenity = address?.optString("amenity") ?: ""
+                val tourism = address?.optString("tourism") ?: ""
+                val shop = address?.optString("shop") ?: ""
+                val building = address?.optString("building") ?: ""
 
                 val poiName = when {
                     name.isNotBlank() -> name
@@ -110,10 +128,7 @@ object WeatherRepository {
                     else -> null
                 }
 
-                val looksSmallTenant = poiName?.let {
-                    isLikelySmallTenant(it, address)
-                } ?: false
-
+                val looksSmallTenant = poiName?.let { isLikelySmallTenant(it, address) } ?: false
                 val venueName = getNearestBigVenueName(lat, lon)
 
                 val label = when {
@@ -126,116 +141,111 @@ object WeatherRepository {
             }
         }
 
-    private fun isLikelySmallTenant(poi: String, address: JSONObject?): Boolean {
-        val n = poi.lowercase(Locale.getDefault())
-
-        val badWords = listOf(
-            "restaurant", "cafe", "bakery", "clinic", "salon",
-            "barber", "nail", "laundry", "7-eleven", "minimart"
-        )
-
-        if (badWords.any { n.contains(it) }) return true
-
-        val amenity = address?.optString("amenity").orEmpty()
-        val shop = address?.optString("shop").orEmpty()
-
-        return amenity.isNotBlank() || shop.isNotBlank()
-    }
-
-    private fun buildAreaLabel(address: JSONObject?, displayName: String?): String? {
-        val fields = listOf(
-            address?.optString("neighbourhood"),
-            address?.optString("suburb"),
-            address?.optString("city_district"),
-            address?.optString("town"),
-            address?.optString("city")
-        )
-
-        for (f in fields) {
-            if (!f.isNullOrBlank() && !isBadLabel(f)) return f
-        }
-
-        displayName?.split(",")?.forEach {
-            val s = it.trim()
-            if (!isBadLabel(s)) return s
-        }
-
-        return null
-    }
+    // ----------------- helpers -----------------
 
     private fun getNearestBigVenueName(lat: Double, lon: Double): String? {
-        val query = """
-            [out:json][timeout:25];
+        val q = """
+            [out:json][timeout:10];
             (
-              node(around:${VENUE_RADIUS_M.toInt()},$lat,$lon)["name"]["shop"="mall"];
-              way(around:${VENUE_RADIUS_M.toInt()},$lat,$lon)["name"]["shop"="mall"];
-              relation(around:${VENUE_RADIUS_M.toInt()},$lat,$lon)["name"]["shop"="mall"];
+              node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["amenity"];
+              node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["tourism"];
+              node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["leisure"];
+              node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["building"];
+              way(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["amenity"];
+              way(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["tourism"];
+              way(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["leisure"];
+              way(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["building"];
+              relation(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["amenity"];
+              relation(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["tourism"];
+              relation(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["leisure"];
+              relation(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["building"];
             );
             out center;
         """.trimIndent()
 
-        val body = "data=" + URLEncoder.encode(query, "UTF-8")
         val mediaType = MediaType.parse("application/x-www-form-urlencoded")
-        val reqBody = RequestBody.create(mediaType, body)
+        val body = RequestBody.create(mediaType, "data=" + URLEncoder.encode(q, "UTF-8"))
 
         val req = Request.Builder()
             .url(OVERPASS_URL)
-            .post(reqBody)
-            .header("User-Agent", "MADAssg2025/1.0")
+            .post(body)
+            .header("User-Agent", "MADAssg2025/1.0 (student project)")
             .build()
 
-        val resp = try {
-            okHttp.newCall(req).execute()
-        } catch (e: Exception) {
-            null
-        } ?: return null
+        return try {
+            okHttp.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
 
-        resp.use { r ->
-            if (!r.isSuccessful) return null
+                // ✅ OkHttp 3.x: use resp.body()
+                val bodyStr = resp.body()?.string() ?: return null
+                val json = JSONObject(bodyStr)
+                val elements = json.optJSONArray("elements") ?: return null
 
-            val json = JSONObject(r.body()?.string() ?: return null)
-            val els = json.optJSONArray("elements") ?: return null
+                var bestName: String? = null
+                var bestDist = Double.MAX_VALUE
 
-            var best: String? = null
-            var bestDist = Double.MAX_VALUE
+                for (i in 0 until elements.length()) {
+                    val el = elements.getJSONObject(i)
+                    val tags = el.optJSONObject("tags") ?: continue
+                    val n = tags.optString("name", "")
+                    if (n.isBlank()) continue
 
-            for (i in 0 until els.length()) {
-                val el = els.getJSONObject(i)
-                val tags = el.optJSONObject("tags") ?: continue
-                val name = tags.optString("name", "")
-                val center = el.optJSONObject("center") ?: continue
+                    val eLat = when {
+                        el.has("lat") -> el.optDouble("lat")
+                        el.optJSONObject("center") != null -> el.optJSONObject("center")!!.optDouble("lat")
+                        else -> Double.NaN
+                    }
+                    val eLon = when {
+                        el.has("lon") -> el.optDouble("lon")
+                        el.optJSONObject("center") != null -> el.optJSONObject("center")!!.optDouble("lon")
+                        else -> Double.NaN
+                    }
+                    if (eLat.isNaN() || eLon.isNaN()) continue
 
-                val d = haversine(
-                    lat, lon,
-                    center.getDouble("lat"),
-                    center.getDouble("lon")
-                )
-
-                if (d < bestDist) {
-                    bestDist = d
-                    best = name
+                    val d = haversineMeters(lat, lon, eLat, eLon)
+                    if (d < bestDist && d <= MAX_VENUE_DISTANCE_M) {
+                        bestDist = d
+                        bestName = n
+                    }
                 }
-            }
 
-            return if (bestDist <= MAX_VENUE_DISTANCE_M) best else null
+                bestName
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
-    private fun haversine(
-        lat1: Double,
-        lon1: Double,
-        lat2: Double,
-        lon2: Double
-    ): Double {
+    private fun buildAreaLabel(address: JSONObject?, displayName: String): String? {
+        if (address == null) {
+            return displayName.takeIf { it.isNotBlank() }
+                ?.split(",")
+                ?.firstOrNull()
+                ?.trim()
+        }
+
+        val neighbourhood = address.optString("neighbourhood", "")
+        val suburb = address.optString("suburb", "")
+        val cityDistrict = address.optString("city_district", "")
+        val town = address.optString("town", "")
+        val city = address.optString("city", "")
+        val county = address.optString("county", "")
+
+        val candidates = listOf(neighbourhood, suburb, cityDistrict, town, city, county)
+            .map { it.trim() }
+            .filter { it.isNotBlank() && !isBadLabel(it) }
+
+        return candidates.firstOrNull()
+            ?: displayName.takeIf { it.isNotBlank() }?.split(",")?.firstOrNull()?.trim()
+    }
+
+    private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-
-        val a =
-            sin(dLat / 2).pow(2.0) +
-                    cos(Math.toRadians(lat1)) *
-                    cos(Math.toRadians(lat2)) *
-                    sin(dLon / 2).pow(2.0)
+        val a = sin(dLat / 2).pow(2.0) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
+                sin(dLon / 2).pow(2.0)
 
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
@@ -248,4 +258,21 @@ object WeatherRepository {
 
     private fun isBadLabel(s: String): Boolean =
         s.isBlank() || s.all { it.isDigit() } || looksLikeBlock(s)
+
+    private fun isLikelySmallTenant(poi: String, address: JSONObject?): Boolean {
+        val n = poi.lowercase(Locale.getDefault())
+        val badWords = listOf(
+            "sushi", "tea", "coffee", "bistro", "restaurant", "cafe", "bubble", "koi",
+            "starbucks", "mcdonald", "subway", "bakery", "clinic", "pharmacy", "salon",
+            "barber", "7-eleven", "minimart", "mart", "store", "shop", "tuition", "centre",
+            "center", "laundry"
+        )
+        if (badWords.any { n.contains(it) }) return true
+
+        val road = address?.optString("road", "") ?: ""
+        val house = address?.optString("house_number", "") ?: ""
+        if (house.isNotBlank() && road.isNotBlank()) return true
+
+        return false
+    }
 }

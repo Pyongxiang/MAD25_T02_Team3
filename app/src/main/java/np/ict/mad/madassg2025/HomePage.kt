@@ -16,12 +16,15 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import np.ict.mad.madassg2025.ui.home.HomeActions
 import np.ict.mad.madassg2025.ui.home.HomeScreen
 import np.ict.mad.madassg2025.ui.home.HomeUiState
 import np.ict.mad.madassg2025.ui.home.MiniWeatherUi
+import np.ict.mad.madassg2025.ui.home.PlaceSuggestion
 import np.ict.mad.madassg2025.ui.home.SavedLocation
 import np.ict.mad.madassg2025.ui.home.UnitPref
 import np.ict.mad.madassg2025.ui.home.computeSkyMode
@@ -35,12 +38,12 @@ class HomePage : ComponentActivity() {
     private val firebaseHelper = FirebaseHelper()
 
     private var uiState by mutableStateOf(HomeUiState())
+    private var searchJob: Job? = null
 
     private val locationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) {
-                fetchLocationAndWeather()
-            } else {
+            if (isGranted) fetchLocationAndWeather()
+            else {
                 uiState = uiState.copy(
                     isLoading = false,
                     error = "Permission denied.\nPlease allow location to use this feature.",
@@ -63,7 +66,6 @@ class HomePage : ComponentActivity() {
             favouritesMini = seedMiniMap(saved, existing = emptyMap())
         )
 
-        // Load mini weather for favourites immediately
         refreshFavouritesMiniWeather()
 
         setContent {
@@ -76,6 +78,10 @@ class HomePage : ComponentActivity() {
                     },
                     onUseMyLocation = { useMyLocation() },
                     onOpenForecast = { openForecastIfPossible() },
+
+                    onSearchQueryChange = { q -> onSearchQueryChanged(q) },
+                    onPickSearchResult = { r -> addSearchResultToFavourites(r) },
+
                     onSelectSaved = { loc -> fetchWeatherForSaved(loc) },
                     onAddCurrent = { addCurrentToSaved() },
                     onRemoveSaved = { loc -> removeSaved(loc) }
@@ -84,14 +90,91 @@ class HomePage : ComponentActivity() {
         }
     }
 
-    private fun useMyLocation() {
-        val status = ContextCompat.checkSelfPermission(
-            this@HomePage,
-            Manifest.permission.ACCESS_FINE_LOCATION
+    // ---------------- Search ----------------
+
+    private fun onSearchQueryChanged(q: String) {
+        uiState = uiState.copy(
+            searchQuery = q,
+            searchError = null
         )
-        if (status == PackageManager.PERMISSION_GRANTED) {
-            fetchLocationAndWeather()
-        } else {
+
+        // clear immediately if blank
+        if (q.isBlank()) {
+            searchJob?.cancel()
+            uiState = uiState.copy(searchLoading = false, searchResults = emptyList(), searchError = null)
+            return
+        }
+
+        searchJob?.cancel()
+        searchJob = lifecycleScope.launch {
+            delay(350) // debounce
+            uiState = uiState.copy(searchLoading = true, searchError = null)
+
+            try {
+                val results = WeatherRepository.searchPlaces(q.trim(), limit = 6)
+
+                val mapped = results.mapNotNull { r ->
+                    val name = r.name?.trim().orEmpty()
+                    val lat = r.lat
+                    val lon = r.lon
+                    if (name.isBlank() || lat == null || lon == null) return@mapNotNull null
+                    PlaceSuggestion(
+                        name = name,
+                        state = r.state,
+                        country = r.country,
+                        lat = lat,
+                        lon = lon
+                    )
+                }
+
+                uiState = uiState.copy(
+                    searchLoading = false,
+                    searchResults = mapped.take(6),
+                    searchError = null
+                )
+            } catch (e: Exception) {
+                uiState = uiState.copy(
+                    searchLoading = false,
+                    searchResults = emptyList(),
+                    searchError = e.message ?: "Search failed"
+                )
+            }
+        }
+    }
+
+    private fun addSearchResultToFavourites(r: PlaceSuggestion) {
+        val userKey = buildUserKey(firebaseHelper)
+        val newItem = SavedLocation(
+            name = r.displayLabel,
+            lat = r.lat,
+            lon = r.lon
+        )
+
+        val updated = (uiState.savedLocations + newItem)
+            .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
+            .take(30)
+
+        val seeded = seedMiniMap(updated, uiState.favouritesMini)
+
+        uiState = uiState.copy(
+            savedLocations = updated,
+            favouritesMini = seeded,
+            searchQuery = "",
+            searchResults = emptyList(),
+            searchLoading = false,
+            searchError = null
+        )
+
+        saveSavedLocations(userKey, updated)
+        refreshFavouritesMiniWeather()
+    }
+
+    // ---------------- Location + Weather ----------------
+
+    private fun useMyLocation() {
+        val status = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        if (status == PackageManager.PERMISSION_GRANTED) fetchLocationAndWeather()
+        else {
             uiState = uiState.copy(
                 isLoading = true,
                 error = null,
@@ -110,19 +193,17 @@ class HomePage : ComponentActivity() {
         val lat = uiState.lastLat ?: return
         val lon = uiState.lastLon ?: return
 
-        val intent = Intent(this@HomePage, ForecastActivity::class.java).apply {
-            putExtra("lat", lat)
-            putExtra("lon", lon)
-            putExtra("place", uiState.placeLabel)
-        }
-        startActivity(intent)
+        startActivity(
+            Intent(this, ForecastActivity::class.java).apply {
+                putExtra("lat", lat)
+                putExtra("lon", lon)
+                putExtra("place", uiState.placeLabel)
+            }
+        )
     }
 
     private fun fetchLocationAndWeather() {
-        val status = ContextCompat.checkSelfPermission(
-            this@HomePage,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        )
+        val status = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         if (status != PackageManager.PERMISSION_GRANTED) {
             locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
             return
@@ -149,7 +230,7 @@ class HomePage : ComponentActivity() {
                 val lat = location.latitude
                 val lon = location.longitude
 
-                val weather: WeatherResponse? = WeatherRepository.getCurrentWeather(lat, lon)
+                val weather = WeatherRepository.getCurrentWeather(lat, lon)
                 if (weather == null) {
                     uiState = uiState.copy(isLoading = false, error = "Weather unavailable (API returned null)")
                     return@launch
@@ -198,7 +279,7 @@ class HomePage : ComponentActivity() {
             )
 
             try {
-                val weather: WeatherResponse? = WeatherRepository.getCurrentWeather(loc.lat, loc.lon)
+                val weather = WeatherRepository.getCurrentWeather(loc.lat, loc.lon)
                 if (weather == null) {
                     uiState = uiState.copy(isLoading = false, error = "Weather unavailable (API returned null)")
                     return@launch
@@ -233,6 +314,8 @@ class HomePage : ComponentActivity() {
         }
     }
 
+    // ---------------- Favourites mini weather ----------------
+
     private fun addCurrentToSaved() {
         val lat = uiState.lastLat
         val lon = uiState.lastLon
@@ -244,35 +327,25 @@ class HomePage : ComponentActivity() {
 
         val updated = (uiState.savedLocations + newItem)
             .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
-            .take(20)
+            .take(30)
 
-        // show the new card immediately (as Loading…)
         val seeded = seedMiniMap(updated, uiState.favouritesMini)
 
         uiState = uiState.copy(savedLocations = updated, favouritesMini = seeded)
         saveSavedLocations(userKey, updated)
-
-        // fetch mini weather in background
         refreshFavouritesMiniWeather()
     }
 
     private fun removeSaved(loc: SavedLocation) {
         val userKey = buildUserKey(firebaseHelper)
-        val updated = uiState.savedLocations.filterNot {
-            it.name == loc.name && it.lat == loc.lat && it.lon == loc.lon
-        }
+        val updated = uiState.savedLocations.filterNot { it.name == loc.name && it.lat == loc.lat && it.lon == loc.lon }
 
-        val updatedMini = uiState.favouritesMini.toMutableMap().apply {
-            remove(favKey(loc))
-        }
+        val updatedMini = uiState.favouritesMini.toMutableMap().apply { remove(favKey(loc)) }
 
         uiState = uiState.copy(savedLocations = updated, favouritesMini = updatedMini)
         saveSavedLocations(userKey, updated)
     }
 
-    /**
-     * Fetch mini weather for each favourite card (if missing or still loading).
-     */
     private fun refreshFavouritesMiniWeather() {
         val favourites = uiState.savedLocations
         if (favourites.isEmpty()) return
@@ -281,9 +354,8 @@ class HomePage : ComponentActivity() {
             favourites.forEach { loc ->
                 val key = favKey(loc)
                 val current = uiState.favouritesMini[key]
-                if (current != null && current.isLoading.not() && current.tempC != null) return@forEach
+                if (current != null && !current.isLoading && current.tempC != null) return@forEach
 
-                // mark loading
                 uiState = uiState.copy(
                     favouritesMini = uiState.favouritesMini.toMutableMap().apply {
                         put(key, MiniWeatherUi(isLoading = true))
@@ -312,24 +384,18 @@ class HomePage : ComponentActivity() {
         }
     }
 
-    private fun seedMiniMap(
-        saved: List<SavedLocation>,
-        existing: Map<String, MiniWeatherUi>
-    ): Map<String, MiniWeatherUi> {
+    private fun seedMiniMap(saved: List<SavedLocation>, existing: Map<String, MiniWeatherUi>): Map<String, MiniWeatherUi> {
         val out = existing.toMutableMap()
         saved.forEach { loc ->
             val key = favKey(loc)
-            if (!out.containsKey(key)) {
-                out[key] = MiniWeatherUi(isLoading = true)
-            }
+            if (!out.containsKey(key)) out[key] = MiniWeatherUi(isLoading = true)
         }
-        // remove keys that are no longer saved
         val keep = saved.map { favKey(it) }.toSet()
         out.keys.toList().forEach { k -> if (!keep.contains(k)) out.remove(k) }
         return out
     }
 
-    // -------- prefs / storage --------
+    // ---------------- prefs ----------------
 
     private fun prefs() = getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
 
@@ -355,13 +421,7 @@ class HomePage : ComponentActivity() {
             buildList {
                 for (i in 0 until arr.length()) {
                     val o = arr.getJSONObject(i)
-                    add(
-                        SavedLocation(
-                            name = o.getString("name"),
-                            lat = o.getDouble("lat"),
-                            lon = o.getDouble("lon")
-                        )
-                    )
+                    add(SavedLocation(o.getString("name"), o.getDouble("lat"), o.getDouble("lon")))
                 }
             }
         }.getOrDefault(emptyList())
