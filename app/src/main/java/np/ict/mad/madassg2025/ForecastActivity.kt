@@ -45,8 +45,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
-import kotlin.math.pow
-import kotlin.math.sqrt
+import kotlin.math.roundToInt
 
 class ForecastActivity : ComponentActivity() {
 
@@ -166,7 +165,26 @@ private fun ForecastAppleLike(
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "3-hour steps • ${hourly.size} points",
+                            color = Color.White.copy(alpha = 0.70f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+
+                        val summary = buildNext24Summary(hourly)
+                        if (summary.isNotBlank()) {
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = summary,
+                                color = Color.White.copy(alpha = 0.82f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
 
                         HourlyRowCompact(
                             items = hourly,
@@ -420,7 +438,11 @@ private fun DetailsCardBelow(h: WeatherForecast.HourItem) {
             ) {
                 DetailStat(icon = "🌡️", label = "Feels like", value = "${h.feelsLikeC}°")
                 DetailStat(icon = "💧", label = "Humidity", value = "${h.humidityPct}%")
-                DetailStat(icon = "🌬️", label = "Wind", value = "${h.windSpeedMs.toInt()} m/s")
+                DetailStat(
+                    icon = "🌬️",
+                    label = "Wind",
+                    value = "${(maxOf(h.windSpeedMs, h.windGustMs)).roundToInt()} m/s"
+                )
             }
 
             Text(
@@ -460,7 +482,7 @@ private fun DetailStat(icon: String, label: String, value: String) {
 
 @Composable
 private fun DailyList(items: List<WeatherForecast.DayItem>) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         items.forEach { d ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -476,13 +498,37 @@ private fun DailyList(items: List<WeatherForecast.DayItem>) {
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Text(text = pickEmojiIcon(d.weatherId), modifier = Modifier.width(34.dp))
+                Text(
+                    text = pickEmojiIcon(d.weatherId),
+                    modifier = Modifier.width(34.dp)
+                )
+
+                // Middle: description to fill the empty space nicely
+                Text(
+                    text = d.description.replaceFirstChar { it.uppercase() }.ifBlank { "—" },
+                    color = Color.White.copy(alpha = 0.78f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Right: wind + temps
+                val windMax = maxOf(d.maxWindMs, d.maxGustMs).roundToInt()
+                Text(
+                    text = "💨 ${windMax}m/s",
+                    color = Color.White.copy(alpha = 0.85f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.width(84.dp),
+                    maxLines = 1
+                )
 
                 Text(
                     text = "${d.lowC}° / ${d.highC}°",
                     color = Color.White,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
                 )
             }
         }
@@ -500,4 +546,34 @@ private fun pickEmojiIcon(weatherId: Int): String {
         in 801..804 -> "☁️"
         else -> "☁️"
     }
+}
+
+/**
+ * Builds a truthful summary from the actual 3-hour forecast points.
+ * Example: "Scattered clouds around 9PM • Wind up to 7 m/s around 3AM"
+ */
+private fun buildNext24Summary(hourly: List<WeatherForecast.HourItem>): String {
+    if (hourly.isEmpty()) return ""
+
+    val firstDesc = hourly.firstOrNull()?.description?.trim().orEmpty()
+    val change = hourly.firstOrNull { it.description.isNotBlank() && it.description != firstDesc }
+    val descItem = change ?: hourly.firstOrNull { it.description.isNotBlank() }
+
+    val descPart = if (descItem != null) {
+        val desc = descItem.description.replaceFirstChar { it.uppercase() }
+        val time = descItem.label
+        "$desc around $time"
+    } else {
+        ""
+    }
+
+    val maxWindItem = hourly.maxByOrNull { maxOf(it.windSpeedMs, it.windGustMs) }
+    val windPart = if (maxWindItem != null) {
+        val w = maxOf(maxWindItem.windSpeedMs, maxWindItem.windGustMs).roundToInt()
+        "Wind up to ${w} m/s around ${maxWindItem.label}"
+    } else {
+        ""
+    }
+
+    return listOf(descPart, windPart).filter { it.isNotBlank() }.joinToString(" • ")
 }

@@ -8,6 +8,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 class WeatherForecast(
     private val apiKey: String = ApiConfig.OPEN_WEATHER_API_KEY
@@ -21,11 +22,12 @@ class WeatherForecast(
 
     data class HourItem(
         val dtUtcSec: Long,
-        val label: String,     // "Now", "2PM", etc.
+        val label: String,     // "Now", "9PM", etc.
         val tempC: Int,
         val feelsLikeC: Int,
         val humidityPct: Int,
         val windSpeedMs: Double,
+        val windGustMs: Double,
         val weatherId: Int,
         val description: String
     )
@@ -35,7 +37,9 @@ class WeatherForecast(
         val lowC: Int,
         val highC: Int,
         val weatherId: Int,
-        val description: String
+        val description: String,
+        val maxWindMs: Double,
+        val maxGustMs: Double
     )
 
     data class ForecastResult(
@@ -67,26 +71,31 @@ class WeatherForecast(
 
             val cityObj = json.optJSONObject("city") ?: return null
             val cityName = cityObj.optString("name", "My Location")
+
             // Forecast endpoint provides city timezone offset (seconds from UTC) in "city.timezone"
             val tzOffsetSec = cityObj.optInt("timezone", 0)
 
             val listArr = json.optJSONArray("list") ?: return null
             if (listArr.length() == 0) return null
 
-            // Build "next 24h" as next 8 x 3-hour points
+            // ---- HOURLY: true "next 24h" window (not fixed 8 items) ----
             val nowUtcSec = System.currentTimeMillis() / 1000L
-            val hourlyItems = mutableListOf<HourItem>()
+            val endUtcSec = nowUtcSec + 24L * 3600L
 
             val hourFmt = SimpleDateFormat("ha", Locale.getDefault()).apply {
+                // We'll format a "local" timestamp by adding tzOffsetSec to dt, then format in UTC
                 timeZone = TimeZone.getTimeZone("UTC")
             }
 
-            var collected = 0
+            val hourlyItems = mutableListOf<HourItem>()
+            var firstAdded = false
+
             for (i in 0 until listArr.length()) {
                 val item = listArr.optJSONObject(i) ?: continue
                 val dt = item.optLong("dt", 0L)
                 if (dt <= 0L) continue
                 if (dt < nowUtcSec) continue
+                if (dt > endUtcSec) break // list is chronological; once past 24h, we can stop
 
                 val main = item.optJSONObject("main") ?: continue
                 val temp = main.optDouble("temp", Double.NaN)
@@ -95,38 +104,44 @@ class WeatherForecast(
 
                 val wind = item.optJSONObject("wind")
                 val windSpeed = wind?.optDouble("speed", Double.NaN) ?: Double.NaN
+                val windGust = wind?.optDouble("gust", Double.NaN) ?: Double.NaN
 
                 val w0 = item.optJSONArray("weather")?.optJSONObject(0)
                 val wid = w0?.optInt("id", 0) ?: 0
                 val wdesc = w0?.optString("description", "") ?: ""
 
                 val localSec = dt + tzOffsetSec
-                val label = if (collected == 0) "Now" else hourFmt.format(Date(localSec * 1000L))
+                val label = if (!firstAdded) {
+                    firstAdded = true
+                    "Now"
+                } else {
+                    hourFmt.format(Date(localSec * 1000L))
+                }
 
                 hourlyItems.add(
                     HourItem(
                         dtUtcSec = dt,
                         label = label,
-                        tempC = if (temp.isNaN()) 0 else temp.toInt(),
-                        feelsLikeC = if (feels.isNaN()) 0 else feels.toInt(),
+                        tempC = if (temp.isNaN()) 0 else temp.roundToInt(),
+                        feelsLikeC = if (feels.isNaN()) 0 else feels.roundToInt(),
                         humidityPct = if (humidity < 0) 0 else humidity,
                         windSpeedMs = if (windSpeed.isNaN()) 0.0 else windSpeed,
+                        windGustMs = if (windGust.isNaN()) 0.0 else windGust,
                         weatherId = wid,
                         description = wdesc
                     )
                 )
-
-                collected++
-                if (collected >= 8) break
             }
 
-            // Build daily next 5 days by grouping by local date
+            // ---- DAILY: group by local date (next 5) + include max wind/gust ----
             data class Acc(
                 var low: Double = Double.POSITIVE_INFINITY,
                 var high: Double = Double.NEGATIVE_INFINITY,
                 val weatherCounts: MutableMap<Int, Int> = mutableMapOf(),
                 val descById: MutableMap<Int, String> = mutableMapOf(),
-                var firstDtLocalSec: Long = Long.MAX_VALUE
+                var firstDtLocalSec: Long = Long.MAX_VALUE,
+                var maxWind: Double = 0.0,
+                var maxGust: Double = 0.0
             )
 
             val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
@@ -147,6 +162,10 @@ class WeatherForecast(
                 val temp = main.optDouble("temp", Double.NaN)
                 if (temp.isNaN()) continue
 
+                val wind = item.optJSONObject("wind")
+                val windSpeed = wind?.optDouble("speed", Double.NaN) ?: Double.NaN
+                val windGust = wind?.optDouble("gust", Double.NaN) ?: Double.NaN
+
                 val w0 = item.optJSONArray("weather")?.optJSONObject(0)
                 val wid = w0?.optInt("id", 0) ?: 0
                 val wdesc = w0?.optString("description", "") ?: ""
@@ -163,6 +182,9 @@ class WeatherForecast(
                     acc.descById[wid] = wdesc
                 }
                 acc.firstDtLocalSec = minOf(acc.firstDtLocalSec, localSec)
+
+                if (!windSpeed.isNaN()) acc.maxWind = maxOf(acc.maxWind, windSpeed)
+                if (!windGust.isNaN()) acc.maxGust = maxOf(acc.maxGust, windGust)
             }
 
             val dailyItems = mutableListOf<DayItem>()
@@ -176,15 +198,19 @@ class WeatherForecast(
                 val dominantId = acc.weatherCounts.maxByOrNull { it.value }?.key ?: 0
                 val desc = acc.descById[dominantId] ?: ""
 
-                val dayLabel = if (idx == 0) "Today" else dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
+                val dayLabel =
+                    if (idx == 0) "Today"
+                    else dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
 
                 dailyItems.add(
                     DayItem(
                         dayLabel = dayLabel,
-                        lowC = if (acc.low.isInfinite()) 0 else acc.low.toInt(),
-                        highC = if (acc.high.isInfinite()) 0 else acc.high.toInt(),
+                        lowC = if (acc.low.isInfinite()) 0 else acc.low.roundToInt(),
+                        highC = if (acc.high.isInfinite()) 0 else acc.high.roundToInt(),
                         weatherId = dominantId,
-                        description = desc
+                        description = desc,
+                        maxWindMs = acc.maxWind,
+                        maxGustMs = acc.maxGust
                     )
                 )
             }
