@@ -34,5 +34,8 @@
             android:name="np.ict.mad.madassg2025.ForecastActivity"
             android:exported="false" />
 
+        <activity android:name=".LocationsActivity" />
+
+
     </application>
 </manifest>

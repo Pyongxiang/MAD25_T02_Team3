@@ -15,13 +15,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import np.ict.mad.madassg2025.ui.home.HomeActions
 import np.ict.mad.madassg2025.ui.home.HomeScreen
 import np.ict.mad.madassg2025.ui.home.HomeUiState
+import np.ict.mad.madassg2025.ui.home.MiniWeatherUi
 import np.ict.mad.madassg2025.ui.home.SavedLocation
 import np.ict.mad.madassg2025.ui.home.UnitPref
 import np.ict.mad.madassg2025.ui.home.computeSkyMode
+import np.ict.mad.madassg2025.ui.home.favKey
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -51,10 +55,16 @@ class HomePage : ComponentActivity() {
         locationHelper = LocationHelper(applicationContext)
 
         val userKey = buildUserKey(firebaseHelper)
+        val saved = loadSavedLocations(userKey)
+
         uiState = uiState.copy(
             unit = loadUnitPref(),
-            savedLocations = loadSavedLocations(userKey)
+            savedLocations = saved,
+            favouritesMini = seedMiniMap(saved, existing = emptyMap())
         )
+
+        // Load mini weather for favourites immediately
+        refreshFavouritesMiniWeather()
 
         setContent {
             HomeScreen(
@@ -132,10 +142,7 @@ class HomePage : ComponentActivity() {
             try {
                 val location: Location? = locationHelper.getFreshLocation()
                 if (location == null) {
-                    uiState = uiState.copy(
-                        isLoading = false,
-                        error = "Unable to get location."
-                    )
+                    uiState = uiState.copy(isLoading = false, error = "Unable to get location.")
                     return@launch
                 }
 
@@ -144,10 +151,7 @@ class HomePage : ComponentActivity() {
 
                 val weather: WeatherResponse? = WeatherRepository.getCurrentWeather(lat, lon)
                 if (weather == null) {
-                    uiState = uiState.copy(
-                        isLoading = false,
-                        error = "Weather unavailable (API returned null)"
-                    )
+                    uiState = uiState.copy(isLoading = false, error = "Weather unavailable (API returned null)")
                     return@launch
                 }
 
@@ -157,11 +161,7 @@ class HomePage : ComponentActivity() {
                 val wid = weather.weather.firstOrNull()?.id
                 val desc = weather.weather.firstOrNull()?.description
                 val nowUtc = System.currentTimeMillis() / 1000L
-                val sky = computeSkyMode(
-                    nowUtcSec = nowUtc,
-                    sunriseUtcSec = weather.sys.sunrise,
-                    sunsetUtcSec = weather.sys.sunset
-                )
+                val sky = computeSkyMode(nowUtc, weather.sys.sunrise, weather.sys.sunset)
 
                 uiState = uiState.copy(
                     isLoading = false,
@@ -180,10 +180,7 @@ class HomePage : ComponentActivity() {
                 )
             } catch (e: Exception) {
                 Log.e("HomePage", "Fetch failed: ${e.message}", e)
-                uiState = uiState.copy(
-                    isLoading = false,
-                    error = e.message ?: "Error"
-                )
+                uiState = uiState.copy(isLoading = false, error = e.message ?: "Error")
             }
         }
     }
@@ -213,11 +210,7 @@ class HomePage : ComponentActivity() {
                 val wid = weather.weather.firstOrNull()?.id
                 val desc = weather.weather.firstOrNull()?.description
                 val nowUtc = System.currentTimeMillis() / 1000L
-                val sky = computeSkyMode(
-                    nowUtcSec = nowUtc,
-                    sunriseUtcSec = weather.sys.sunrise,
-                    sunsetUtcSec = weather.sys.sunset
-                )
+                val sky = computeSkyMode(nowUtc, weather.sys.sunrise, weather.sys.sunset)
 
                 uiState = uiState.copy(
                     isLoading = false,
@@ -244,7 +237,6 @@ class HomePage : ComponentActivity() {
         val lat = uiState.lastLat
         val lon = uiState.lastLon
         val name = uiState.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" }
-
         if (lat == null || lon == null || name.isNullOrBlank()) return
 
         val userKey = buildUserKey(firebaseHelper)
@@ -252,10 +244,16 @@ class HomePage : ComponentActivity() {
 
         val updated = (uiState.savedLocations + newItem)
             .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
-            .take(12)
+            .take(20)
 
-        uiState = uiState.copy(savedLocations = updated)
+        // show the new card immediately (as Loading…)
+        val seeded = seedMiniMap(updated, uiState.favouritesMini)
+
+        uiState = uiState.copy(savedLocations = updated, favouritesMini = seeded)
         saveSavedLocations(userKey, updated)
+
+        // fetch mini weather in background
+        refreshFavouritesMiniWeather()
     }
 
     private fun removeSaved(loc: SavedLocation) {
@@ -263,8 +261,72 @@ class HomePage : ComponentActivity() {
         val updated = uiState.savedLocations.filterNot {
             it.name == loc.name && it.lat == loc.lat && it.lon == loc.lon
         }
-        uiState = uiState.copy(savedLocations = updated)
+
+        val updatedMini = uiState.favouritesMini.toMutableMap().apply {
+            remove(favKey(loc))
+        }
+
+        uiState = uiState.copy(savedLocations = updated, favouritesMini = updatedMini)
         saveSavedLocations(userKey, updated)
+    }
+
+    /**
+     * Fetch mini weather for each favourite card (if missing or still loading).
+     */
+    private fun refreshFavouritesMiniWeather() {
+        val favourites = uiState.savedLocations
+        if (favourites.isEmpty()) return
+
+        lifecycleScope.launch {
+            favourites.forEach { loc ->
+                val key = favKey(loc)
+                val current = uiState.favouritesMini[key]
+                if (current != null && current.isLoading.not() && current.tempC != null) return@forEach
+
+                // mark loading
+                uiState = uiState.copy(
+                    favouritesMini = uiState.favouritesMini.toMutableMap().apply {
+                        put(key, MiniWeatherUi(isLoading = true))
+                    }
+                )
+
+                val mini = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val w = WeatherRepository.getCurrentWeather(loc.lat, loc.lon)
+                        if (w == null) null
+                        else MiniWeatherUi(
+                            tempC = w.main.temp,
+                            desc = w.weather.firstOrNull()?.description,
+                            weatherId = w.weather.firstOrNull()?.id,
+                            isLoading = false
+                        )
+                    }.getOrNull()
+                }
+
+                uiState = uiState.copy(
+                    favouritesMini = uiState.favouritesMini.toMutableMap().apply {
+                        put(key, mini ?: MiniWeatherUi(isLoading = false))
+                    }
+                )
+            }
+        }
+    }
+
+    private fun seedMiniMap(
+        saved: List<SavedLocation>,
+        existing: Map<String, MiniWeatherUi>
+    ): Map<String, MiniWeatherUi> {
+        val out = existing.toMutableMap()
+        saved.forEach { loc ->
+            val key = favKey(loc)
+            if (!out.containsKey(key)) {
+                out[key] = MiniWeatherUi(isLoading = true)
+            }
+        }
+        // remove keys that are no longer saved
+        val keep = saved.map { favKey(it) }.toSet()
+        out.keys.toList().forEach { k -> if (!keep.contains(k)) out.remove(k) }
+        return out
     }
 
     // -------- prefs / storage --------

@@ -6,6 +6,13 @@ data class SavedLocation(
     val lon: Double
 )
 
+data class MiniWeatherUi(
+    val tempC: Double? = null,
+    val desc: String? = null,
+    val weatherId: Int? = null,
+    val isLoading: Boolean = true
+)
+
 enum class UnitPref(val label: String) {
     C("°C"),
     F("°F")
@@ -20,7 +27,7 @@ data class HomeUiState(
     val placeLabel: String = "—",
     val locationText: String = "",
 
-    // Current weather
+    // Current weather (for the selected/current location)
     val tempC: Double? = null,
     val condition: String? = null,
     val weatherId: Int? = null,
@@ -35,7 +42,11 @@ data class HomeUiState(
     val lastLat: Double? = null,
     val lastLon: Double? = null,
 
+    // Saved locations list
     val savedLocations: List<SavedLocation> = emptyList(),
+
+    // ✅ NEW: mini weather for each saved location card (keyed by "name|lat|lon")
+    val favouritesMini: Map<String, MiniWeatherUi> = emptyMap(),
 
     val skyMode: SkyMode = SkyMode.NIGHT
 ) {
@@ -43,6 +54,11 @@ data class HomeUiState(
         get() = !isLoading && lastLat != null && lastLon != null
 }
 
+fun favKey(loc: SavedLocation): String = "${loc.name}|${loc.lat}|${loc.lon}"
+
+/**
+ * Uses sunrise/sunset if available; otherwise falls back to device clock.
+ */
 fun computeSkyMode(
     nowUtcSec: Long,
     sunriseUtcSec: Long?,
