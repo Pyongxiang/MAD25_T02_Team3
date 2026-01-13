@@ -44,6 +44,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -88,10 +92,14 @@ private fun ForecastAppleLike(
 
     var selectedHourIndex by remember { mutableStateOf(0) }
 
+    // ✅ NEW: sunrise/sunset line
+    var sunLine by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(lat, lon) {
         loading = true
         error = null
         result = null
+        sunLine = null
         selectedHourIndex = 0
 
         if (lat.isNaN() || lon.isNaN()) {
@@ -100,19 +108,34 @@ private fun ForecastAppleLike(
             return@LaunchedEffect
         }
 
-        if (ApiConfig.OPEN_WEATHER_API_KEY.startsWith("PUT_")) {
-            loading = false
-            error = "API key not set in ApiConfig.kt"
-            return@LaunchedEffect
-        }
-
         try {
-            val res = withContext(Dispatchers.IO) {
-                WeatherForecast().getHourly24AndDaily5(lat, lon)
+            val (forecastRes, currentRes) = withContext(Dispatchers.IO) {
+                val f = WeatherForecast().getHourly24AndDaily5(lat, lon)
+                val c = WeatherRepository.getCurrentWeather(lat, lon)
+                Pair(f, c)
             }
+
             loading = false
-            if (res == null) error = "Unable to load 5-day forecast"
-            else result = res
+
+            if (forecastRes == null) {
+                error = "Unable to load 5-day forecast"
+                return@LaunchedEffect
+            }
+
+            result = forecastRes
+
+            // Build sunrise/sunset line using current weather response
+            if (currentRes != null) {
+                val sunriseLocal = formatLocalTime(
+                    utcEpochSec = currentRes.sys.sunrise,
+                    tzOffsetSec = currentRes.timezone
+                )
+                val sunsetLocal = formatLocalTime(
+                    utcEpochSec = currentRes.sys.sunset,
+                    tzOffsetSec = currentRes.timezone
+                )
+                sunLine = "🌅 Sunrise $sunriseLocal • 🌇 Sunset $sunsetLocal"
+            }
         } catch (e: Exception) {
             loading = false
             error = e.message ?: "Forecast failed"
@@ -184,6 +207,18 @@ private fun ForecastAppleLike(
                             )
                         }
 
+                        // ✅ NEW: show sunrise/sunset under the summary
+                        if (!sunLine.isNullOrBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = sunLine!!,
+                                color = Color.White.copy(alpha = 0.80f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
                         Spacer(Modifier.height(12.dp))
 
                         HourlyRowCompact(
@@ -216,6 +251,14 @@ private fun ForecastAppleLike(
             }
         }
     }
+}
+
+private fun formatLocalTime(utcEpochSec: Long, tzOffsetSec: Int): String {
+    val localEpochSec = utcEpochSec + tzOffsetSec.toLong()
+    val fmt = SimpleDateFormat("h:mm a", Locale.getDefault()).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+    return fmt.format(Date(localEpochSec * 1000L))
 }
 
 @Composable
@@ -503,7 +546,6 @@ private fun DailyList(items: List<WeatherForecast.DayItem>) {
                     modifier = Modifier.width(34.dp)
                 )
 
-                // Middle: description to fill the empty space nicely
                 Text(
                     text = d.description.replaceFirstChar { it.uppercase() }.ifBlank { "—" },
                     color = Color.White.copy(alpha = 0.78f),
@@ -513,7 +555,6 @@ private fun DailyList(items: List<WeatherForecast.DayItem>) {
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Right: wind + temps
                 val windMax = maxOf(d.maxWindMs, d.maxGustMs).roundToInt()
                 Text(
                     text = "💨 ${windMax}m/s",
@@ -548,10 +589,6 @@ private fun pickEmojiIcon(weatherId: Int): String {
     }
 }
 
-/**
- * Builds a truthful summary from the actual 3-hour forecast points.
- * Example: "Scattered clouds around 9PM • Wind up to 7 m/s around 3AM"
- */
 private fun buildNext24Summary(hourly: List<WeatherForecast.HourItem>): String {
     if (hourly.isEmpty()) return ""
 

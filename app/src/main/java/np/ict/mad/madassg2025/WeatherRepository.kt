@@ -23,9 +23,8 @@ object WeatherRepository {
     private const val BASE_URL = "https://api.openweathermap.org/"
     private const val NOMINATIM_BASE = "https://nominatim.openstreetmap.org/reverse"
     private const val OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-
-    // 🔑 Replace with your real key or BuildConfig value
-    private const val OPEN_WEATHER_API_KEY = "e25a0c31ecc92cc51c1c7548568af374"
+    private val OPEN_WEATHER_API_KEY: String
+        get() = ApiConfig.OPEN_WEATHER_API_KEY
 
     private const val VENUE_RADIUS_M = 350.0
     private const val MAX_VENUE_DISTANCE_M = 600.0
@@ -49,7 +48,6 @@ object WeatherRepository {
         retrofit.create(WeatherApiService::class.java)
     }
 
-    // ✅ Matches WeatherApiService.kt exactly
     suspend fun getCurrentWeather(lat: Double, lon: Double): WeatherResponse? =
         withContext(Dispatchers.IO) {
             try {
@@ -63,7 +61,6 @@ object WeatherRepository {
             }
         }
 
-    // ✅ FIXED: explicit return to avoid "Missing return statement"
     suspend fun getPlaceName(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
 
@@ -125,7 +122,6 @@ object WeatherRepository {
                     else -> buildAreaLabel(address, displayName)
                 }?.takeIf { !isBadLabel(it) }
 
-                // ✅ REQUIRED explicit return
                 return@withContext label
             }
         }
