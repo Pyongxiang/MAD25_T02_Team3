@@ -85,6 +85,10 @@ object WeatherRepository {
 
     /**
      * Reverse geocode using Nominatim + Overpass heuristic
+     *
+     * ✅ Updated:
+     * - Avoid returning "small tenants" (restaurants/shops) as the main label,
+     *   even if Overpass finds them closest.
      */
     suspend fun getPlaceName(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
@@ -113,27 +117,37 @@ object WeatherRepository {
                 val address = json.optJSONObject("address")
                 val displayName = json.optString("display_name", "")
 
-                val name = address?.optString("attraction") ?: ""
+                val attraction = address?.optString("attraction") ?: ""
                 val amenity = address?.optString("amenity") ?: ""
                 val tourism = address?.optString("tourism") ?: ""
                 val shop = address?.optString("shop") ?: ""
                 val building = address?.optString("building") ?: ""
+                val leisure = address?.optString("leisure") ?: ""
+                val historic = address?.optString("historic") ?: ""
 
                 val poiName = when {
-                    name.isNotBlank() -> name
-                    amenity.isNotBlank() -> amenity
+                    attraction.isNotBlank() -> attraction
                     tourism.isNotBlank() -> tourism
+                    leisure.isNotBlank() -> leisure
+                    historic.isNotBlank() -> historic
+                    amenity.isNotBlank() -> amenity
                     shop.isNotBlank() -> shop
                     building.isNotBlank() -> building
                     else -> null
                 }
 
-                val looksSmallTenant = poiName?.let { isLikelySmallTenant(it, address) } ?: false
+                val looksSmallTenantPoi = poiName?.let { isLikelySmallTenant(it, address) } ?: false
+
+                // Overpass: try to find a nearby "bigger venue"
                 val venueName = getNearestBigVenueName(lat, lon)
 
+                // ✅ NEW: also reject venueName if it's likely a small tenant (e.g., Sushi Tei)
+                val looksSmallTenantVenue =
+                    venueName?.let { isLikelySmallTenant(it, address) } ?: false
+
                 val label = when {
-                    !venueName.isNullOrBlank() -> venueName
-                    !poiName.isNullOrBlank() && !looksSmallTenant -> poiName
+                    !venueName.isNullOrBlank() && !looksSmallTenantVenue -> venueName
+                    !poiName.isNullOrBlank() && !looksSmallTenantPoi -> poiName
                     else -> buildAreaLabel(address, displayName)
                 }?.takeIf { !isBadLabel(it) }
 
@@ -187,8 +201,11 @@ object WeatherRepository {
                 for (i in 0 until elements.length()) {
                     val el = elements.getJSONObject(i)
                     val tags = el.optJSONObject("tags") ?: continue
-                    val n = tags.optString("name", "")
+                    val n = tags.optString("name", "").trim()
                     if (n.isBlank()) continue
+
+                    // ✅ NEW: reject obvious small POIs (restaurants/shops/etc) even if close
+                    if (isLikelySmallVenue(tags, n)) continue
 
                     val eLat = when {
                         el.has("lat") -> el.optDouble("lat")
@@ -214,6 +231,36 @@ object WeatherRepository {
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Heuristic filter for Overpass candidates.
+     * Tries to avoid picking small businesses as "the place".
+     */
+    private fun isLikelySmallVenue(tags: JSONObject, name: String): Boolean {
+        val amenity = tags.optString("amenity", "").lowercase(Locale.getDefault())
+        val shop = tags.optString("shop", "").lowercase(Locale.getDefault())
+        val tourism = tags.optString("tourism", "").lowercase(Locale.getDefault())
+
+        // If it is a shop, very likely not what we want as a main label.
+        if (shop.isNotBlank()) return true
+
+        // Tourism "attraction" can be valid; "hotel" etc tends to be less helpful as a general label.
+        val tourismBad = setOf("hotel", "guest_house", "hostel", "motel", "apartment")
+        if (tourism.isNotBlank() && tourism in tourismBad) return true
+
+        // Common small amenities we want to avoid.
+        val smallAmenity = setOf(
+            "restaurant", "cafe", "fast_food", "bar", "pub",
+            "clinic", "dentist", "pharmacy",
+            "bank", "atm",
+            "convenience", "kiosk", "marketplace",
+            "beauty", "hairdresser"
+        )
+        if (amenity.isNotBlank() && amenity in smallAmenity) return true
+
+        // Name-based backup (same idea as isLikelySmallTenant)
+        return isLikelySmallTenant(name, address = null)
     }
 
     private fun buildAreaLabel(address: JSONObject?, displayName: String): String? {

@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +26,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -63,115 +65,194 @@ fun HomeScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             DynamicSkyBackground(modifier = Modifier.fillMaxSize(), mode = state.skyMode)
 
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(20.dp),
+                    .padding(horizontal = 20.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Header + unit toggle
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 10.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "My Location",
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-
-                        Text(
-                            text = state.placeLabel.ifBlank { "—" },
-                            color = Color.White,
-                            style = MaterialTheme.typography.headlineMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-
-                        when {
-                            state.isLoading -> Text(
-                                text = "Loading…",
-                                color = Color.White.copy(alpha = 0.80f),
+                item {
+                    // Header + unit toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "My Location",
+                                color = Color.White.copy(alpha = 0.85f),
                                 style = MaterialTheme.typography.titleMedium
                             )
 
-                            state.error != null -> Text(
-                                text = "Error: ${state.error}",
-                                color = Color.White.copy(alpha = 0.90f),
-                                style = MaterialTheme.typography.bodyMedium
+                            Text(
+                                text = state.placeLabel.ifBlank { "—" },
+                                color = Color.White,
+                                style = MaterialTheme.typography.headlineMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
 
-                            state.tempC == null || state.condition.isNullOrBlank() -> Text(
-                                text = "Tap Use My Location to load weather",
-                                color = Color.White.copy(alpha = 0.75f),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                            when {
+                                state.isLoading -> Text(
+                                    text = "Loading…",
+                                    color = Color.White.copy(alpha = 0.80f),
+                                    style = MaterialTheme.typography.titleMedium
+                                )
 
-                            else -> {
-                                val tempShown = formatTemp(state.tempC, state.unit)
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                state.error != null -> Text(
+                                    text = "Error: ${state.error}",
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+
+                                state.tempC == null || state.condition.isNullOrBlank() -> Text(
+                                    text = "Tap Use My Location to load weather",
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+
+                                else -> {
+                                    val tempShown = formatTemp(state.tempC, state.unit)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Text(
+                                            text = pickWeatherEmojiById(state.weatherId),
+                                            modifier = Modifier.size(42.dp),
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.headlineMedium
+                                        )
+                                        Text(
+                                            text = tempShown,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.displayLarge,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+
                                     Text(
-                                        text = pickWeatherEmojiById(state.weatherId),
-                                        modifier = Modifier.size(42.dp),
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.headlineMedium
+                                        text = state.condition!!.replaceFirstChar { it.uppercase() },
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        style = MaterialTheme.typography.titleMedium
                                     )
+                                }
+                            }
+                        }
+
+                        UnitsToggle(unit = state.unit, onChange = actions.onToggleUnit)
+                    }
+                }
+
+                item {
+                    // Top details + open forecast
+                    TopDetailsAndForecast(
+                        state = state,
+                        onOpenForecast = actions.onOpenForecast
+                    )
+                }
+
+                item {
+                    // My location + save
+                    MyLocationRow(
+                        currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" },
+                        canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
+                        onAddCurrent = actions.onAddCurrent
+                    )
+                }
+
+                item {
+                    // Search + results
+                    SearchSection(
+                        state = state,
+                        onQueryChange = actions.onSearchQueryChange,
+                        onPick = actions.onPickSearchResult
+                    )
+                }
+
+                if (state.savedLocations.isNotEmpty()) {
+                    item {
+                        Text("Favourites", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    items(state.savedLocations, key = { favKey(it) }) { loc ->
+                        val key = favKey(loc)
+                        val mini = state.favouritesMini[key]
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = { actions.onSelectSaved(loc) },
+                                    onLongClick = { actions.onRemoveSaved(loc) }
+                                ),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+                        ) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = tempShown,
+                                        text = loc.name,
                                         color = Color.White,
-                                        style = MaterialTheme.typography.displayLarge,
-                                        fontWeight = FontWeight.SemiBold
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = when {
+                                            mini == null -> "Loading…"
+                                            mini.isLoading -> "Loading…"
+                                            mini.desc.isNullOrBlank() -> "—"
+                                            else -> mini.desc.replaceFirstChar { it.uppercase() }
+                                        },
+                                        color = Color.White.copy(alpha = 0.70f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
 
-                                Text(
-                                    text = state.condition!!.replaceFirstChar { it.uppercase() },
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    style = MaterialTheme.typography.titleMedium
-                                )
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
+                                    val tempText = when {
+                                        mini == null || mini.isLoading || mini.tempC == null -> "—"
+                                        state.unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
+                                        else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
+                                    }
+                                    Text(
+                                        tempText,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
                             }
                         }
                     }
 
-                    UnitsToggle(unit = state.unit, onChange = actions.onToggleUnit)
+                    item {
+                        Text(
+                            "Tip: long-press a card to remove",
+                            color = Color.White.copy(alpha = 0.55f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
 
-                // ✅ NEW: Top “details” (instead of bottom Forecast card)
-                TopDetailsAndForecast(
-                    state = state,
-                    onOpenForecast = actions.onOpenForecast
-                )
-
-                // My location + save
-                MyLocationRow(
-                    currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" },
-                    canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
-                    onAddCurrent = actions.onAddCurrent
-                )
-
-                // ✅ NEW: Search bar + results (tap to add to favourites)
-                SearchSection(
-                    state = state,
-                    onQueryChange = actions.onSearchQueryChange,
-                    onPick = actions.onPickSearchResult
-                )
-
-                // Stacked favourites cards
-                FavouritesStack(
-                    saved = state.savedLocations,
-                    miniMap = state.favouritesMini,
-                    unit = state.unit,
-                    onSelect = actions.onSelectSaved,
-                    onRemove = actions.onRemoveSaved
-                )
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                Button(modifier = Modifier.fillMaxWidth(), onClick = actions.onUseMyLocation) {
-                    Text("Use My Location")
+                item {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = actions.onUseMyLocation
+                    ) {
+                        Text("Use My Location")
+                    }
                 }
             }
         }
@@ -267,7 +348,6 @@ private fun SearchSection(
             Text("Search error: ${state.searchError}", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodySmall)
         }
 
-        // Results list
         state.searchResults.forEach { r ->
             Card(
                 modifier = Modifier
@@ -343,74 +423,6 @@ private fun MyLocationRow(currentLabel: String?, canSave: Boolean, onAddCurrent:
     }
 }
 
-@Composable
-private fun FavouritesStack(
-    saved: List<SavedLocation>,
-    miniMap: Map<String, MiniWeatherUi>,
-    unit: UnitPref,
-    onSelect: (SavedLocation) -> Unit,
-    onRemove: (SavedLocation) -> Unit
-) {
-    if (saved.isEmpty()) return
-
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Favourites", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-
-        saved.forEach { loc ->
-            val key = favKey(loc)
-            val mini = miniMap[key]
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .combinedClickable(onClick = { onSelect(loc) }, onLongClick = { onRemove(loc) }),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-            ) {
-                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = loc.name,
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = when {
-                                mini == null -> "Loading…"
-                                mini.isLoading -> "Loading…"
-                                mini.desc.isNullOrBlank() -> "—"
-                                else -> mini.desc.replaceFirstChar { it.uppercase() }
-                            },
-                            color = Color.White.copy(alpha = 0.70f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(Modifier.width(12.dp))
-
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
-                        val tempText = when {
-                            mini == null || mini.isLoading || mini.tempC == null -> "—"
-                            unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
-                            else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
-                        }
-                        Text(tempText, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        }
-
-        Text("Tip: long-press a card to remove", color = Color.White.copy(alpha = 0.55f), style = MaterialTheme.typography.bodySmall)
-    }
-}
-
 private fun formatTemp(tempC: Double?, unit: UnitPref): String {
     if (tempC == null) return "—"
     return when (unit) {
@@ -442,10 +454,6 @@ private fun formatLocalTime(utcEpochSec: Long, tzOffsetSec: Int): String {
     return fmt.format(Date(localEpochSec * 1000L))
 }
 
-/**
- * Keep your current background implementation here.
- * (If you already updated it, paste yours in—this file will compile as long as the function exists.)
- */
 @Composable
 private fun DynamicSkyBackground(modifier: Modifier, mode: SkyMode) {
     val base = when (mode) {

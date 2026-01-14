@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
@@ -92,7 +93,7 @@ private fun ForecastAppleLike(
 
     var selectedHourIndex by remember { mutableStateOf(0) }
 
-    // ✅ NEW: sunrise/sunset line
+    // sunrise/sunset line
     var sunLine by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(lat, lon) {
@@ -124,7 +125,6 @@ private fun ForecastAppleLike(
 
             result = forecastRes
 
-            // Build sunrise/sunset line using current weather response
             if (currentRes != null) {
                 val sunriseLocal = formatLocalTime(
                     utcEpochSec = currentRes.sys.sunrise,
@@ -142,6 +142,8 @@ private fun ForecastAppleLike(
         }
     }
 
+    val verticalScroll = rememberScrollState()
+
     Surface(
         modifier = Modifier
             .fillMaxSize()
@@ -151,6 +153,7 @@ private fun ForecastAppleLike(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(verticalScroll)
                 .padding(horizontal = 18.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -207,7 +210,6 @@ private fun ForecastAppleLike(
                             )
                         }
 
-                        // ✅ NEW: show sunrise/sunset under the summary
                         if (!sunLine.isNullOrBlank()) {
                             Spacer(Modifier.height(8.dp))
                             Text(

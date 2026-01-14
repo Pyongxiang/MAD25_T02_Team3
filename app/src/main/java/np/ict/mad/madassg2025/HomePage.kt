@@ -236,6 +236,7 @@ class HomePage : ComponentActivity() {
                     return@launch
                 }
 
+                // ✅ B: get a better label, but avoid tiny tenants via WeatherRepository heuristics
                 val betterName = WeatherRepository.getPlaceName(lat, lon)
                 val finalLabel = betterName ?: weather.name
 
@@ -285,8 +286,8 @@ class HomePage : ComponentActivity() {
                     return@launch
                 }
 
-                val betterName = WeatherRepository.getPlaceName(loc.lat, loc.lon)
-                val finalLabel = betterName ?: weather.name
+                // ✅ A: always keep the saved name stable (do NOT overwrite with reverse-geocode)
+                val finalLabel = loc.name
 
                 val wid = weather.weather.firstOrNull()?.id
                 val desc = weather.weather.firstOrNull()?.description
