@@ -48,7 +48,12 @@ fun ForecastScreen(
 
     var selectedHourIndex by remember { mutableStateOf(0) }
 
-    // sunrise/sunset line
+    // sunrise/sunset info (for SunPathCard)
+    var sunriseUtc by remember { mutableStateOf<Long?>(null) }
+    var sunsetUtc by remember { mutableStateOf<Long?>(null) }
+    var tzOffsetSec by remember { mutableStateOf<Int?>(null) }
+
+    // sunrise/sunset line (existing)
     var sunLine by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(lat, lon) {
@@ -57,6 +62,9 @@ fun ForecastScreen(
         result = null
         sunLine = null
         selectedHourIndex = 0
+        sunriseUtc = null
+        sunsetUtc = null
+        tzOffsetSec = null
 
         if (lat.isNaN() || lon.isNaN()) {
             loading = false
@@ -81,14 +89,13 @@ fun ForecastScreen(
             result = forecastRes
 
             if (currentRes != null) {
-                val sunriseLocal = formatLocalTime(
-                    utcEpochSec = currentRes.sys.sunrise,
-                    tzOffsetSec = currentRes.timezone
-                )
-                val sunsetLocal = formatLocalTime(
-                    utcEpochSec = currentRes.sys.sunset,
-                    tzOffsetSec = currentRes.timezone
-                )
+                val tz = currentRes.timezone
+                tzOffsetSec = tz
+                sunriseUtc = currentRes.sys.sunrise
+                sunsetUtc = currentRes.sys.sunset
+
+                val sunriseLocal = formatLocalTime(currentRes.sys.sunrise, tz)
+                val sunsetLocal = formatLocalTime(currentRes.sys.sunset, tz)
                 sunLine = "🌅 Sunrise $sunriseLocal • 🌇 Sunset $sunsetLocal"
             }
         } catch (e: Exception) {
@@ -194,8 +201,20 @@ fun ForecastScreen(
                         DetailsCardBelow(selected)
                     }
 
-                    // Placeholder for next step (Sun Path card)
-                    // SunPathCard(...) will go here next.
+                    // ✅ Sun Path card (new)
+                    val sRise = sunriseUtc
+                    val sSet = sunsetUtc
+                    val tz = tzOffsetSec
+                    if (sRise != null && sSet != null && tz != null) {
+                        FrostCard {
+                            SunPathCard(
+                                sunriseUtc = sRise,
+                                sunsetUtc = sSet,
+                                tzOffsetSec = tz,
+                                nowUtcSec = System.currentTimeMillis() / 1000L
+                            )
+                        }
+                    }
 
                     FrostCard {
                         Text(
