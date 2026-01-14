@@ -26,6 +26,12 @@ class WeatherForecast(
         val tempC: Int,
         val feelsLikeC: Int,
         val humidityPct: Int,
+        val pressureHPa: Int,
+        val cloudsPct: Int,
+        val popPct: Int,
+        val visibilityM: Int,
+        val rainMm: Double,
+        val snowMm: Double,
         val windSpeedMs: Double,
         val windGustMs: Double,
         val weatherId: Int,
@@ -39,7 +45,10 @@ class WeatherForecast(
         val weatherId: Int,
         val description: String,
         val maxWindMs: Double,
-        val maxGustMs: Double
+        val maxGustMs: Double,
+        val popMaxPct: Int,
+        val precipTotalMm: Double,
+        val humidityAvgPct: Int
     )
 
     data class ForecastResult(
@@ -70,37 +79,38 @@ class WeatherForecast(
             val json = JSONObject(raw)
 
             val cityObj = json.optJSONObject("city") ?: return null
-            val cityName = cityObj.optString("name", "My Location")
+            val cityName = cityObj.optString("name", "—")
 
-            // Forecast endpoint provides city timezone offset (seconds from UTC) in "city.timezone"
             val tzOffsetSec = cityObj.optInt("timezone", 0)
 
-            val listArr = json.optJSONArray("list") ?: return null
-            if (listArr.length() == 0) return null
+            val list = json.optJSONArray("list") ?: return null
 
-            // ---- HOURLY: true "next 24h" window (not fixed 8 items) ----
-            val nowUtcSec = System.currentTimeMillis() / 1000L
-            val endUtcSec = nowUtcSec + 24L * 3600L
-
+            // ---- HOURLY: take first 8 points (~24 hours in 3h steps) ----
             val hourFmt = SimpleDateFormat("ha", Locale.getDefault()).apply {
-                // We'll format a "local" timestamp by adding tzOffsetSec to dt, then format in UTC
                 timeZone = TimeZone.getTimeZone("UTC")
             }
 
             val hourlyItems = mutableListOf<HourItem>()
             var firstAdded = false
 
-            for (i in 0 until listArr.length()) {
-                val item = listArr.optJSONObject(i) ?: continue
+            val maxHourly = minOf(8, list.length())
+            for (i in 0 until maxHourly) {
+                val item = list.optJSONObject(i) ?: continue
                 val dt = item.optLong("dt", 0L)
-                if (dt <= 0L) continue
-                if (dt < nowUtcSec) continue
-                if (dt > endUtcSec) break // list is chronological; once past 24h, we can stop
+                if (dt == 0L) continue
 
                 val main = item.optJSONObject("main") ?: continue
                 val temp = main.optDouble("temp", Double.NaN)
                 val feels = main.optDouble("feels_like", Double.NaN)
                 val humidity = main.optInt("humidity", -1)
+                val pressure = main.optInt("pressure", -1)
+
+                val clouds = item.optJSONObject("clouds")?.optInt("all", -1) ?: -1
+                val pop = item.optDouble("pop", Double.NaN)
+                val visibility = item.optInt("visibility", -1)
+
+                val rainMm = item.optJSONObject("rain")?.optDouble("3h", 0.0) ?: 0.0
+                val snowMm = item.optJSONObject("snow")?.optDouble("3h", 0.0) ?: 0.0
 
                 val wind = item.optJSONObject("wind")
                 val windSpeed = wind?.optDouble("speed", Double.NaN) ?: Double.NaN
@@ -125,6 +135,12 @@ class WeatherForecast(
                         tempC = if (temp.isNaN()) 0 else temp.roundToInt(),
                         feelsLikeC = if (feels.isNaN()) 0 else feels.roundToInt(),
                         humidityPct = if (humidity < 0) 0 else humidity,
+                        pressureHPa = if (pressure < 0) 0 else pressure,
+                        cloudsPct = if (clouds < 0) 0 else clouds,
+                        popPct = if (pop.isNaN()) 0 else (pop * 100.0).roundToInt().coerceIn(0, 100),
+                        visibilityM = if (visibility < 0) 0 else visibility,
+                        rainMm = rainMm,
+                        snowMm = snowMm,
                         windSpeedMs = if (windSpeed.isNaN()) 0.0 else windSpeed,
                         windGustMs = if (windGust.isNaN()) 0.0 else windGust,
                         weatherId = wid,
@@ -133,7 +149,7 @@ class WeatherForecast(
                 )
             }
 
-            // ---- DAILY: group by local date (next 5) + include max wind/gust ----
+            // ---- DAILY: group by local date (next 5) + include max wind/gust + precip summary ----
             data class Acc(
                 var low: Double = Double.POSITIVE_INFINITY,
                 var high: Double = Double.NEGATIVE_INFINITY,
@@ -141,7 +157,12 @@ class WeatherForecast(
                 val descById: MutableMap<Int, String> = mutableMapOf(),
                 var firstDtLocalSec: Long = Long.MAX_VALUE,
                 var maxWind: Double = 0.0,
-                var maxGust: Double = 0.0
+                var maxGust: Double = 0.0,
+                var popMax: Double = 0.0,
+                var rainSumMm: Double = 0.0,
+                var snowSumMm: Double = 0.0,
+                var humiditySum: Int = 0,
+                var humidityCount: Int = 0
             )
 
             val dayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
@@ -153,10 +174,10 @@ class WeatherForecast(
 
             val accByDay = linkedMapOf<String, Acc>()
 
-            for (i in 0 until listArr.length()) {
-                val item = listArr.optJSONObject(i) ?: continue
+            for (i in 0 until list.length()) {
+                val item = list.optJSONObject(i) ?: continue
                 val dt = item.optLong("dt", 0L)
-                if (dt <= 0L) continue
+                if (dt == 0L) continue
 
                 val main = item.optJSONObject("main") ?: continue
                 val temp = main.optDouble("temp", Double.NaN)
@@ -165,6 +186,11 @@ class WeatherForecast(
                 val wind = item.optJSONObject("wind")
                 val windSpeed = wind?.optDouble("speed", Double.NaN) ?: Double.NaN
                 val windGust = wind?.optDouble("gust", Double.NaN) ?: Double.NaN
+
+                val pop = item.optDouble("pop", 0.0)
+                val rainMm = item.optJSONObject("rain")?.optDouble("3h", 0.0) ?: 0.0
+                val snowMm = item.optJSONObject("snow")?.optDouble("3h", 0.0) ?: 0.0
+                val humidity = main.optInt("humidity", -1)
 
                 val w0 = item.optJSONArray("weather")?.optJSONObject(0)
                 val wid = w0?.optInt("id", 0) ?: 0
@@ -185,32 +211,43 @@ class WeatherForecast(
 
                 if (!windSpeed.isNaN()) acc.maxWind = maxOf(acc.maxWind, windSpeed)
                 if (!windGust.isNaN()) acc.maxGust = maxOf(acc.maxGust, windGust)
+
+                // chance of precipitation (0..1)
+                acc.popMax = maxOf(acc.popMax, pop.coerceIn(0.0, 1.0))
+                // precipitation volume over 3h (mm)
+                acc.rainSumMm += rainMm
+                acc.snowSumMm += snowMm
+                if (humidity >= 0) {
+                    acc.humiditySum += humidity
+                    acc.humidityCount += 1
+                }
             }
 
             val dailyItems = mutableListOf<DayItem>()
             val keys = accByDay.keys.toList()
             val maxDays = minOf(5, keys.size)
 
-            for (idx in 0 until maxDays) {
-                val key = keys[idx]
-                val acc = accByDay[key] ?: continue
+            for (d in 0 until maxDays) {
+                val k = keys[d]
+                val acc = accByDay[k] ?: continue
 
-                val dominantId = acc.weatherCounts.maxByOrNull { it.value }?.key ?: 0
+                val label = if (d == 0) "Today" else dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
+
+                val dominantId = acc.weatherCounts.entries.maxByOrNull { it.value }?.key ?: 0
                 val desc = acc.descById[dominantId] ?: ""
-
-                val dayLabel =
-                    if (idx == 0) "Today"
-                    else dayLabelFmt.format(Date(acc.firstDtLocalSec * 1000L))
 
                 dailyItems.add(
                     DayItem(
-                        dayLabel = dayLabel,
+                        dayLabel = label,
                         lowC = if (acc.low.isInfinite()) 0 else acc.low.roundToInt(),
                         highC = if (acc.high.isInfinite()) 0 else acc.high.roundToInt(),
                         weatherId = dominantId,
                         description = desc,
                         maxWindMs = acc.maxWind,
-                        maxGustMs = acc.maxGust
+                        maxGustMs = acc.maxGust,
+                        popMaxPct = (acc.popMax * 100.0).roundToInt().coerceIn(0, 100),
+                        precipTotalMm = acc.rainSumMm + acc.snowSumMm,
+                        humidityAvgPct = if (acc.humidityCount > 0) (acc.humiditySum.toDouble() / acc.humidityCount).roundToInt() else 0
                     )
                 )
             }

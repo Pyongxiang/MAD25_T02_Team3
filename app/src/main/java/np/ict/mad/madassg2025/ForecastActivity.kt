@@ -483,11 +483,25 @@ private fun DetailsCardBelow(h: WeatherForecast.HourItem) {
             ) {
                 DetailStat(icon = "🌡️", label = "Feels like", value = "${h.feelsLikeC}°")
                 DetailStat(icon = "💧", label = "Humidity", value = "${h.humidityPct}%")
-                DetailStat(
-                    icon = "🌬️",
-                    label = "Wind",
-                    value = "${(maxOf(h.windSpeedMs, h.windGustMs)).roundToInt()} m/s"
-                )
+                DetailStat(icon = "🌬️", label = "Wind", value = "${h.windSpeedMs.roundToInt()} m/s")
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                DetailStat(icon = "🧭", label = "Pressure", value = "${h.pressureHPa} hPa")
+                DetailStat(icon = "☁️", label = "Clouds", value = "${h.cloudsPct}%")
+                DetailStat(icon = "🌧️", label = "Precip", value = formatPrecipMm(h.rainMm + h.snowMm))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                DetailStat(icon = "☔", label = "Chance", value = "${h.popPct}%")
+                DetailStat(icon = "👁️", label = "Visibility", value = formatVisibility(h.visibilityM))
+                DetailStat(icon = "💨", label = "Gust", value = "${h.windGustMs.roundToInt()} m/s")
             }
 
             Text(
@@ -525,6 +539,17 @@ private fun DetailStat(icon: String, label: String, value: String) {
     }
 }
 
+private fun formatVisibility(visibilityM: Int): String {
+    if (visibilityM <= 0) return "—"
+    val km = visibilityM.toDouble() / 1000.0
+    return if (km >= 10.0) "${km.roundToInt()} km" else String.format(Locale.getDefault(), "%.1f km", km)
+}
+
+private fun formatPrecipMm(mm: Double): String {
+    if (mm <= 0.0) return "0 mm"
+    return if (mm >= 10.0) "${mm.roundToInt()} mm" else String.format(Locale.getDefault(), "%.1f mm", mm)
+}
+
 @Composable
 private fun DailyList(items: List<WeatherForecast.DayItem>) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -557,14 +582,27 @@ private fun DailyList(items: List<WeatherForecast.DayItem>) {
                     overflow = TextOverflow.Ellipsis
                 )
 
-                val windMax = maxOf(d.maxWindMs, d.maxGustMs).roundToInt()
-                Text(
-                    text = "💨 ${windMax}m/s",
-                    color = Color.White.copy(alpha = 0.85f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.width(84.dp),
-                    maxLines = 1
-                )
+                // Apple-like extras: precip chance + wind (stacked)
+                Column(
+                    modifier = Modifier.width(92.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    Text(
+                        text = "☔ ${d.popMaxPct}%",
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1
+                    )
+                    val windMax = maxOf(d.maxWindMs, d.maxGustMs).roundToInt()
+                    Text(
+                        text = "💨 ${windMax}m/s",
+                        color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
 
                 Text(
                     text = "${d.lowC}° / ${d.highC}°",
@@ -572,6 +610,17 @@ private fun DailyList(items: List<WeatherForecast.DayItem>) {
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1
+                )
+            }
+
+            // Optional precip amount line (only if meaningful)
+            if (d.precipTotalMm >= 0.5) {
+                Text(
+                    text = "   💧 ${formatPrecipMm(d.precipTotalMm)} expected",
+                    color = Color.White.copy(alpha = 0.65f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -614,5 +663,12 @@ private fun buildNext24Summary(hourly: List<WeatherForecast.HourItem>): String {
         ""
     }
 
-    return listOf(descPart, windPart).filter { it.isNotBlank() }.joinToString(" • ")
+    val maxPopItem = hourly.maxByOrNull { it.popPct }
+    val popPart = if (maxPopItem != null && maxPopItem.popPct > 0) {
+        "Precip chance up to ${maxPopItem.popPct}% around ${maxPopItem.label}"
+    } else {
+        ""
+    }
+
+    return listOf(descPart, windPart, popPart).filter { it.isNotBlank() }.joinToString(" • ")
 }
