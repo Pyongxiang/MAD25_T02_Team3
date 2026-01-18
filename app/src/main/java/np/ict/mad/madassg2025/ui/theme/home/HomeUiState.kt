@@ -32,7 +32,7 @@ data class HomeUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
 
-    val placeLabel: String = "—",
+    val placeLabel: String = "–",
     val locationText: String = "",
 
     val tempC: Double? = null,
@@ -51,13 +51,16 @@ data class HomeUiState(
     val savedLocations: List<SavedLocation> = emptyList(),
     val favouritesMini: Map<String, MiniWeatherUi> = emptyMap(),
 
-    // ✅ NEW: search state
     val searchQuery: String = "",
     val searchLoading: Boolean = false,
     val searchError: String? = null,
     val searchResults: List<PlaceSuggestion> = emptyList(),
 
-    val skyMode: SkyMode = SkyMode.NIGHT
+    val skyMode: SkyMode = SkyMode.NIGHT,
+
+    // AI Narrator state
+    val isNarrating: Boolean = false,
+    val narratorError: String? = null
 ) {
     val canOpenForecast: Boolean
         get() = !isLoading && lastLat != null && lastLon != null

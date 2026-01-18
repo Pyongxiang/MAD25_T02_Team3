@@ -53,7 +53,11 @@ data class HomeActions(
 
     val onSelectSaved: (SavedLocation) -> Unit,
     val onAddCurrent: () -> Unit,
-    val onRemoveSaved: (SavedLocation) -> Unit
+    val onRemoveSaved: (SavedLocation) -> Unit,
+
+    // AI Narrator actions
+    val onNarrateWeather: () -> Unit,
+    val onStopNarration: () -> Unit
 )
 
 @Composable
@@ -88,7 +92,7 @@ fun HomeScreen(
                             )
 
                             Text(
-                                text = state.placeLabel.ifBlank { "—" },
+                                text = state.placeLabel.ifBlank { "–" },
                                 color = Color.White,
                                 style = MaterialTheme.typography.headlineMedium,
                                 maxLines = 1,
@@ -151,14 +155,16 @@ fun HomeScreen(
                     // Top details + open forecast
                     TopDetailsAndForecast(
                         state = state,
-                        onOpenForecast = actions.onOpenForecast
+                        onOpenForecast = actions.onOpenForecast,
+                        onNarrateWeather = actions.onNarrateWeather,
+                        onStopNarration = actions.onStopNarration
                     )
                 }
 
                 item {
                     // My location + save
                     MyLocationRow(
-                        currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" },
+                        currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "–" && it != "Loading…" },
                         canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
                         onAddCurrent = actions.onAddCurrent
                     )
@@ -207,7 +213,7 @@ fun HomeScreen(
                                         text = when {
                                             mini == null -> "Loading…"
                                             mini.isLoading -> "Loading…"
-                                            mini.desc.isNullOrBlank() -> "—"
+                                            mini.desc.isNullOrBlank() -> "–"
                                             else -> mini.desc.replaceFirstChar { it.uppercase() }
                                         },
                                         color = Color.White.copy(alpha = 0.70f),
@@ -222,7 +228,7 @@ fun HomeScreen(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
                                     val tempText = when {
-                                        mini == null || mini.isLoading || mini.tempC == null -> "—"
+                                        mini == null || mini.isLoading || mini.tempC == null -> "–"
                                         state.unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
                                         else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
                                     }
@@ -260,60 +266,112 @@ fun HomeScreen(
 }
 
 @Composable
-private fun TopDetailsAndForecast(state: HomeUiState, onOpenForecast: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+private fun TopDetailsAndForecast(
+    state: HomeUiState,
+    onOpenForecast: () -> Unit,
+    onNarrateWeather: () -> Unit,
+    onStopNarration: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                val timeStr = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                Text(
-                    text = "Updated $timeStr",
-                    color = Color.White.copy(alpha = 0.70f),
-                    style = MaterialTheme.typography.bodySmall
-                )
-
-                if (!state.isLoading && state.sunriseUtc != null && state.sunsetUtc != null && state.tzOffsetSec != null) {
-                    val sunrise = formatLocalTime(state.sunriseUtc, state.tzOffsetSec)
-                    val sunset = formatLocalTime(state.sunsetUtc, state.tzOffsetSec)
-                    Text("🌅 Sunrise $sunrise", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                    Text("🌇 Sunset $sunset", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
-                } else {
-                    Text("Sunrise/Sunset: —", color = Color.White.copy(alpha = 0.70f), style = MaterialTheme.typography.bodySmall)
-                }
-
-                if (!state.isLoading && state.locationText.isNotBlank()) {
-                    Text(
-                        text = state.locationText,
-                        color = Color.White.copy(alpha = 0.70f),
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-
-            Card(
-                modifier = Modifier.clickable(enabled = state.canOpenForecast) { onOpenForecast() },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "View 7-day",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    color = Color.White.copy(alpha = if (state.canOpenForecast) 0.90f else 0.45f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
-                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val timeStr = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+                    Text(
+                        text = "Updated $timeStr",
+                        color = Color.White.copy(alpha = 0.70f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    if (!state.isLoading && state.sunriseUtc != null && state.sunsetUtc != null && state.tzOffsetSec != null) {
+                        val sunrise = formatLocalTime(state.sunriseUtc, state.tzOffsetSec)
+                        val sunset = formatLocalTime(state.sunsetUtc, state.tzOffsetSec)
+                        Text("🌅 Sunrise $sunrise", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                        Text("🌇 Sunset $sunset", color = Color.White.copy(alpha = 0.82f), style = MaterialTheme.typography.bodyMedium)
+                    } else {
+                        Text("Sunrise/Sunset: –", color = Color.White.copy(alpha = 0.70f), style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    if (!state.isLoading && state.locationText.isNotBlank()) {
+                        Text(
+                            text = state.locationText,
+                            color = Color.White.copy(alpha = 0.70f),
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // AI Narrator button
+                    Card(
+                        modifier = Modifier.clickable(enabled = !state.isLoading && state.tempC != null) {
+                            if (state.isNarrating) onStopNarration() else onNarrateWeather()
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (state.isNarrating)
+                                Color(0xFFFF6B6B).copy(alpha = 0.3f)
+                            else
+                                Color.White.copy(alpha = 0.10f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (state.isNarrating) "🔊" else "🎙️",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = if (state.isNarrating) "Stop" else "Narrate",
+                                color = Color.White.copy(
+                                    alpha = if (!state.isLoading && state.tempC != null) 0.90f else 0.45f
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Forecast button
+                    Card(
+                        modifier = Modifier.clickable(enabled = state.canOpenForecast) { onOpenForecast() },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+                    ) {
+                        Text(
+                            text = "View 7-day",
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            color = Color.White.copy(alpha = if (state.canOpenForecast) 0.90f else 0.45f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
+        }
+
+        // Show narrator error if any
+        if (state.narratorError != null) {
+            Text(
+                text = "Narrator: ${state.narratorError}",
+                color = Color(0xFFFF6B6B).copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -424,7 +482,7 @@ private fun MyLocationRow(currentLabel: String?, canSave: Boolean, onAddCurrent:
 }
 
 private fun formatTemp(tempC: Double?, unit: UnitPref): String {
-    if (tempC == null) return "—"
+    if (tempC == null) return "–"
     return when (unit) {
         UnitPref.C -> "${tempC.roundToInt()}°"
         UnitPref.F -> "${(tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"

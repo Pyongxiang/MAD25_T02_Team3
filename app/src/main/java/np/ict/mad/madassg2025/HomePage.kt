@@ -36,6 +36,7 @@ class HomePage : ComponentActivity() {
 
     private lateinit var locationHelper: LocationHelper
     private val firebaseHelper = FirebaseHelper()
+    private lateinit var weatherNarrator: WeatherNarrator  // AI Narrator
 
     private var uiState by mutableStateOf(HomeUiState())
     private var searchJob: Job? = null
@@ -47,7 +48,7 @@ class HomePage : ComponentActivity() {
                 uiState = uiState.copy(
                     isLoading = false,
                     error = "Permission denied.\nPlease allow location to use this feature.",
-                    placeLabel = "—"
+                    placeLabel = "–"
                 )
             }
         }
@@ -56,6 +57,7 @@ class HomePage : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         locationHelper = LocationHelper(applicationContext)
+        weatherNarrator = WeatherNarrator(applicationContext)  // Initialize narrator
 
         val userKey = buildUserKey(firebaseHelper)
         val saved = loadSavedLocations(userKey)
@@ -84,13 +86,63 @@ class HomePage : ComponentActivity() {
 
                     onSelectSaved = { loc -> fetchWeatherForSaved(loc) },
                     onAddCurrent = { addCurrentToSaved() },
-                    onRemoveSaved = { loc -> removeSaved(loc) }
+                    onRemoveSaved = { loc -> removeSaved(loc) },
+
+                    // AI Narrator actions
+                    onNarrateWeather = { narrateCurrentWeather() },
+                    onStopNarration = { stopNarration() }
                 )
             )
         }
     }
 
-    // ---------------- Search ----------------
+    override fun onDestroy() {
+        super.onDestroy()
+        weatherNarrator.shutdown()  // Clean up narrator resources
+    }
+
+    // ============ AI NARRATOR METHODS ============
+
+    private fun narrateCurrentWeather() {
+        val place = uiState.placeLabel.takeIf { it.isNotBlank() && it != "–" && it != "Loading…" }
+        val tempC = uiState.tempC
+        val condition = uiState.condition
+
+        if (place == null || tempC == null || condition == null) {
+            uiState = uiState.copy(narratorError = "No weather data to narrate")
+            return
+        }
+
+        uiState = uiState.copy(isNarrating = true, narratorError = null)
+
+        lifecycleScope.launch {
+            weatherNarrator.narrateWeather(
+                place = place,
+                tempC = tempC,
+                condition = condition,
+                weatherId = uiState.weatherId,
+                sunriseUtc = uiState.sunriseUtc,
+                sunsetUtc = uiState.sunsetUtc,
+                tzOffsetSec = uiState.tzOffsetSec,
+                onStart = {
+                    uiState = uiState.copy(isNarrating = true, narratorError = null)
+                },
+                onComplete = {
+                    uiState = uiState.copy(isNarrating = false)
+                },
+                onError = { error ->
+                    uiState = uiState.copy(isNarrating = false, narratorError = error)
+                }
+            )
+        }
+    }
+
+    private fun stopNarration() {
+        weatherNarrator.stop()
+        uiState = uiState.copy(isNarrating = false)
+    }
+
+    // ============ SEARCH METHODS ============
 
     private fun onSearchQueryChanged(q: String) {
         uiState = uiState.copy(
@@ -169,7 +221,7 @@ class HomePage : ComponentActivity() {
         refreshFavouritesMiniWeather()
     }
 
-    // ---------------- Location + Weather ----------------
+    // ============ LOCATION + WEATHER METHODS ============
 
     private fun useMyLocation() {
         val status = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
@@ -236,7 +288,6 @@ class HomePage : ComponentActivity() {
                     return@launch
                 }
 
-                // ✅ B: get a better label, but avoid tiny tenants via WeatherRepository heuristics
                 val betterName = WeatherRepository.getPlaceName(lat, lon)
                 val finalLabel = betterName ?: weather.name
 
@@ -286,7 +337,6 @@ class HomePage : ComponentActivity() {
                     return@launch
                 }
 
-                // ✅ A: always keep the saved name stable (do NOT overwrite with reverse-geocode)
                 val finalLabel = loc.name
 
                 val wid = weather.weather.firstOrNull()?.id
@@ -315,12 +365,12 @@ class HomePage : ComponentActivity() {
         }
     }
 
-    // ---------------- Favourites mini weather ----------------
+    // ============ FAVOURITES MINI WEATHER ============
 
     private fun addCurrentToSaved() {
         val lat = uiState.lastLat
         val lon = uiState.lastLon
-        val name = uiState.placeLabel.takeIf { it.isNotBlank() && it != "—" && it != "Loading…" }
+        val name = uiState.placeLabel.takeIf { it.isNotBlank() && it != "–" && it != "Loading…" }
         if (lat == null || lon == null || name.isNullOrBlank()) return
 
         val userKey = buildUserKey(firebaseHelper)
@@ -396,7 +446,7 @@ class HomePage : ComponentActivity() {
         return out
     }
 
-    // ---------------- prefs ----------------
+    // ============ PREFERENCES ============
 
     private fun prefs() = getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
 
