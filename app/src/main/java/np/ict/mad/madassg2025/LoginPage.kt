@@ -22,6 +22,7 @@ fun LoginPage() {
     val context = LocalContext.current
 
     // -- STATE VARIABLES --
+    var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -68,6 +69,20 @@ fun LoginPage() {
             )
 
             Spacer(modifier = Modifier.height(32.dp))
+
+            if (!isLoginMode) {
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Next
+                    )
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
             // --- EMAIL INPUT ---
             OutlinedTextField(
@@ -173,11 +188,13 @@ fun LoginPage() {
                         )
                     } else {
                         // === LOGIC FOR SIGN UP ===
-                        firebaseHelper.signUp(email, password,
+                        firebaseHelper.signUp(
+                            email = email,
+                            password = password,
+                            username = username,
                             onSuccess = {
                                 isLoading = false
                                 Toast.makeText(context, "Account Created!", Toast.LENGTH_SHORT).show()
-                                // Navigate to Home
                                 val intent = Intent(context, HomePage::class.java)
                                 context.startActivity(intent)
                             },

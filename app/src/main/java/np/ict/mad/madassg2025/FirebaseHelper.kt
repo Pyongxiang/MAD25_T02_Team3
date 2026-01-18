@@ -4,10 +4,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class FirebaseHelper {
     // getting the "keys" to Firebase's authentication system
     private val auth: FirebaseAuth = Firebase.auth
+    private val db = FirebaseFirestore.getInstance()
 
     // ========== FUNCTIONS ==========
 
@@ -63,9 +65,14 @@ class FirebaseHelper {
     fun signUp(
         email: String,
         password: String,
+        username: String,
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
+        if (username.isBlank()) {
+            onFailure("Username cannot be empty")
+            return
+        }
         // Validate email is not empty
         if (email.isBlank()) {
             onFailure("Email cannot be empty")
@@ -86,12 +93,23 @@ class FirebaseHelper {
 
         // Call Firebase to create account
         auth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener {
-                // Success! Account created
-                onSuccess()
+            .addOnSuccessListener { result ->
+                val userId = result.user?.uid
+                if (userId != null) {
+                    // CREATE THE USER PROFILE IN FIRESTORE
+                    val userProfile = hashMapOf(
+                        "username" to username,
+                        "email" to email,
+                        "uid" to userId
+                    )
+
+                    db.collection("users").document(userId)
+                        .set(userProfile)
+                        .addOnSuccessListener { onSuccess() }
+                        .addOnFailureListener { onFailure("Account created, but profile failed.") }
+                }
             }
             .addOnFailureListener { exception ->
-                // Failed! Show error message
                 onFailure(exception.message ?: "Sign up failed")
             }
     }
@@ -182,7 +200,7 @@ class FirebaseHelper {
             }
             .addOnFailureListener { exception ->
                 // Note: Firebase often returns a success message even if the email doesn't exist
-                // for security reasons (to prevent user enumeration). We will trust the default
+                // for security reasons (to prevent user enumeration). We will trust the default0
                 // success/failure outcome here.
                 onFailure(exception.message ?: "Failed to send reset email.")
             }
