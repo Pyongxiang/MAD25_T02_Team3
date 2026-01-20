@@ -46,6 +46,7 @@
             android:name=".MapSearchActivity"
             android:exported="false" />
 
+        <activity android:name=".ProfilePage" android:exported="false" />
 
     </application>
 </manifest>

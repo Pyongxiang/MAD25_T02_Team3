@@ -184,6 +184,25 @@ class FirebaseHelper {
      * onFailure = { error -> /* Show error */ }
      * )
      */
+
+    /**
+     * Retrieve user profile details from Firestore
+     */
+    fun getUserProfile(onSuccess: (Map<String, Any>?) -> Unit, onFailure: (String) -> Unit) {
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            db.collection("users").document(userId)
+                .get()
+                .addOnSuccessListener { document ->
+                    onSuccess(document.data)
+                }
+                .addOnFailureListener { e ->
+                    onFailure(e.message ?: "Failed to fetch profile")
+                }
+        } else {
+            onFailure("No user logged in")
+        }
+    }
     fun forgotPassword(
         email: String,
         onSuccess: () -> Unit,
@@ -206,3 +225,4 @@ class FirebaseHelper {
             }
     }
 }
+
