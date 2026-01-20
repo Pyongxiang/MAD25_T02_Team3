@@ -21,12 +21,16 @@ import androidx.compose.ui.unit.sp
 fun LoginPage() {
     val context = LocalContext.current
 
+    val prefs = remember { context.getSharedPreferences("UserPrefs", android.content.Context.MODE_PRIVATE) }
+
     // -- STATE VARIABLES --
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
+
+    var rememberMe by remember { mutableStateOf(false) }
 
     // toggle decides if the page acts as Login or Sign Up
     var isLoginMode by remember { mutableStateOf(true) }
@@ -114,41 +118,43 @@ fun LoginPage() {
                 )
             )
 
-            // --- FORGOT PASSWORD LINK (NEW ADDITION) ---
+            // --- REMEMBER ME & FORGOT PASSWORD ROW ---
             if (isLoginMode) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween // Pushes items to opposite sides
                 ) {
+                    // LEFT SIDE: Remember Me
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = rememberMe,
+                            onCheckedChange = { rememberMe = it }
+                        )
+                        Text("Remember Me", style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    // RIGHT SIDE: Forgot Password
                     TextButton(
                         onClick = {
-                            // 1. Check if email is provided
                             if (email.isBlank()) {
                                 errorMessage = "Enter your email to reset the password."
                                 return@TextButton
                             }
-
                             isLoading = true
                             firebaseHelper.forgotPassword(email,
                                 onSuccess = {
                                     isLoading = false
-                                    errorMessage = null
-                                    Toast.makeText(
-                                        context,
-                                        "Password reset email sent to $email!",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                                    Toast.makeText(context, "Reset email sent!", Toast.LENGTH_SHORT).show()
                                 },
                                 onFailure = { error ->
                                     isLoading = false
-                                    // Often Firebase returns a generic success/failure for security,
-                                    // but we show the error if it's a validation issue.
                                     errorMessage = error
                                 }
                             )
                         }
                     ) {
-                        Text("Forgot Password?")
+                        Text("Forgot Password?", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -172,14 +178,18 @@ fun LoginPage() {
                     errorMessage = null // Clear previous errors
 
                     if (isLoginMode) {
-                        // === LOGIC FOR LOGIN ===
                         firebaseHelper.signIn(email, password,
                             onSuccess = {
                                 isLoading = false
+
+                                // === CRITICAL: SAVE THE PREFERENCE ===
+                                prefs.edit().putBoolean("remember", rememberMe).apply()
+
                                 Toast.makeText(context, "Login Successful!", Toast.LENGTH_SHORT).show()
-                                // Navigate to Home
                                 val intent = Intent(context, HomePage::class.java)
                                 context.startActivity(intent)
+                                // Finish the login activity so they can't go back
+                                (context as? android.app.Activity)?.finish()
                             },
                             onFailure = { error ->
                                 isLoading = false

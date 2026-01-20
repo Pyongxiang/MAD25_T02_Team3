@@ -77,7 +77,7 @@ class FriendPage : ComponentActivity() {
                         }
 
                         Text(
-                            text = "Social",
+                            text = "Friends",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(start = 8.dp)

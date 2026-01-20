@@ -1,5 +1,6 @@
 package np.ict.mad.madassg2025
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -43,7 +44,6 @@ class ProfilePage : ComponentActivity() {
             }
 
             Surface(modifier = Modifier.fillMaxSize()) {
-                // Use Box to overlay the back button on top of the Column content
                 Box(modifier = Modifier.fillMaxSize()) {
 
                     // --- TOP LEFT BACK BUTTON ---
@@ -113,7 +113,7 @@ class ProfilePage : ComponentActivity() {
                             }
                         }
 
-                        Spacer(modifier = Modifier.weight(1f)) // Pushes Logout to the bottom
+                        Spacer(modifier = Modifier.weight(1f))
 
                         // --- LOGOUT BUTTON ---
                         Button(
@@ -124,6 +124,12 @@ class ProfilePage : ComponentActivity() {
                             ),
                             onClick = {
                                 firebaseHelper.signOut()
+
+                                // CLEAR STORED PREFERENCES
+                                val prefs = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
+                                prefs.edit().putBoolean("remember", false).apply()
+
+                                // 3. Redirect to Login and Clear Stack
                                 val intent = Intent(this@ProfilePage, MainActivity::class.java)
                                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 startActivity(intent)
