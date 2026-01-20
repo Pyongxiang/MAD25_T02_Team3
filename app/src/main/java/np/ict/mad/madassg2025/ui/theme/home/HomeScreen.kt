@@ -1,5 +1,10 @@
 package np.ict.mad.madassg2025.ui.home
 
+import android.content.Intent
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.ui.platform.LocalContext
+import np.ict.mad.madassg2025.MapSearchActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -74,216 +79,225 @@ fun HomeScreen(
     state: HomeUiState,
     actions: HomeActions
 ) {
-    Scaffold(
-        containerColor = Color.Transparent,
-    ) { innerPadding ->
-        Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                DynamicSkyBackground(modifier = Modifier.fillMaxSize(), mode = state.skyMode)
+    val context = LocalContext.current
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp)
-                        .padding(innerPadding),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        top = 20.dp,
-                        bottom = 100.dp // Added extra bottom padding so content isn't hidden by the footer
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        // Header + unit toggle
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 10.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    text = "My Location",
-                                    color = Color.White.copy(alpha = 0.85f),
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            DynamicSkyBackground(modifier = Modifier.fillMaxSize(), mode = state.skyMode)
+
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                item {
+                    // Header + unit toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "My Location",
+                                color = Color.White.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Text(
+                                text = state.placeLabel.ifBlank { "–" },
+                                color = Color.White,
+                                style = MaterialTheme.typography.headlineMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            when {
+                                state.isLoading -> Text(
+                                    text = "Loading…",
+                                    color = Color.White.copy(alpha = 0.80f),
                                     style = MaterialTheme.typography.titleMedium
                                 )
 
-                                Text(
-                                    text = state.placeLabel.ifBlank { "–" },
-                                    color = Color.White,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                state.error != null -> Text(
+                                    text = "Error: ${state.error}",
+                                    color = Color.White.copy(alpha = 0.90f),
+                                    style = MaterialTheme.typography.bodyMedium
                                 )
 
-                                when {
-                                    state.isLoading -> Text(
-                                        text = "Loading…",
-                                        color = Color.White.copy(alpha = 0.80f),
-                                        style = MaterialTheme.typography.titleMedium
-                                    )
+                                state.tempC == null || state.condition.isNullOrBlank() -> Text(
+                                    text = "Tap Use My Location to load weather",
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
 
-                                    state.error != null -> Text(
-                                        text = "Error: ${state.error}",
-                                        color = Color.White.copy(alpha = 0.90f),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-
-                                    state.tempC == null || state.condition.isNullOrBlank() -> Text(
-                                        text = "Tap Use My Location to load weather",
-                                        color = Color.White.copy(alpha = 0.75f),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-
-                                    else -> {
-                                        val tempShown = formatTemp(state.tempC, state.unit)
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            Text(
-                                                text = pickWeatherEmojiById(state.weatherId),
-                                                modifier = Modifier.size(42.dp),
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.headlineMedium
-                                            )
-                                            Text(
-                                                text = tempShown,
-                                                color = Color.White,
-                                                style = MaterialTheme.typography.displayLarge,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-
+                                else -> {
+                                    val tempShown = formatTemp(state.tempC, state.unit)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
                                         Text(
-                                            text = state.condition!!.replaceFirstChar { it.uppercase() },
-                                            color = Color.White.copy(alpha = 0.85f),
-                                            style = MaterialTheme.typography.titleMedium
-                                        )
-                                    }
-                                }
-                            }
-
-                            UnitsToggle(unit = state.unit, onChange = actions.onToggleUnit)
-                        }
-                    }
-
-                    item {
-                        TopDetailsAndForecast(
-                            state = state,
-                            onOpenForecast = actions.onOpenForecast,
-                            onNarrateWeather = actions.onNarrateWeather,
-                            onStopNarration = actions.onStopNarration
-                        )
-                    }
-
-                    item {
-                        MyLocationRow(
-                            currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "–" && it != "Loading…" },
-                            canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
-                            onAddCurrent = actions.onAddCurrent
-                        )
-                    }
-
-                    item {
-                        SearchSection(
-                            state = state,
-                            onQueryChange = actions.onSearchQueryChange,
-                            onPick = actions.onPickSearchResult
-                        )
-                    }
-
-                    if (state.savedLocations.isNotEmpty()) {
-                        item {
-                            Text("Favourites", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
-                        }
-
-                        items(state.savedLocations, key = { favKey(it) }) { loc ->
-                            val key = favKey(loc)
-                            val mini = state.favouritesMini[key]
-
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .combinedClickable(
-                                        onClick = { actions.onSelectSaved(loc) },
-                                        onLongClick = { actions.onRemoveSaved(loc) }
-                                    ),
-                                shape = RoundedCornerShape(20.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
-                            ) {
-                                Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = loc.name,
+                                            text = pickWeatherEmojiById(state.weatherId),
+                                            modifier = Modifier.size(42.dp),
                                             color = Color.White,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            style = MaterialTheme.typography.headlineMedium
                                         )
-                                        Spacer(Modifier.height(4.dp))
                                         Text(
-                                            text = when {
-                                                mini == null -> "Loading…"
-                                                mini.isLoading -> "Loading…"
-                                                mini.desc.isNullOrBlank() -> "–"
-                                                else -> mini.desc.replaceFirstChar { it.uppercase() }
-                                            },
-                                            color = Color.White.copy(alpha = 0.70f),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-
-                                    Spacer(Modifier.width(12.dp))
-
-                                    Column(horizontalAlignment = Alignment.End) {
-                                        Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
-                                        val tempText = when {
-                                            mini == null || mini.isLoading || mini.tempC == null -> "–"
-                                            state.unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
-                                            else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
-                                        }
-                                        Text(
-                                            tempText,
+                                            text = tempShown,
                                             color = Color.White,
-                                            style = MaterialTheme.typography.titleLarge,
+                                            style = MaterialTheme.typography.displayLarge,
                                             fontWeight = FontWeight.SemiBold
                                         )
                                     }
+
+                                    Text(
+                                        text = state.condition!!.replaceFirstChar { it.uppercase() },
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
                                 }
                             }
                         }
 
-                        item {
-                            Text(
-                                "Tip: long-press a card to remove",
-                                color = Color.White.copy(alpha = 0.55f),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                        UnitsToggle(unit = state.unit, onChange = actions.onToggleUnit)
+                    }
+                }
+
+                item {
+                    // Top details + open forecast
+                    TopDetailsAndForecast(
+                        state = state,
+                        onOpenForecast = actions.onOpenForecast,
+                        onNarrateWeather = actions.onNarrateWeather,
+                        onStopNarration = actions.onStopNarration
+                    )
+                }
+
+                item {
+                    // My location + save
+                    MyLocationRow(
+                        currentLabel = state.placeLabel.takeIf { it.isNotBlank() && it != "–" && it != "Loading…" },
+                        canSave = !state.isLoading && state.lastLat != null && state.lastLon != null,
+                        onAddCurrent = actions.onAddCurrent
+                    )
+                }
+
+                item {
+                    // Search + results
+                    SearchSection(
+                        state = state,
+                        onQueryChange = actions.onSearchQueryChange,
+                        onPick = actions.onPickSearchResult
+                    )
+                }
+
+                if (state.savedLocations.isNotEmpty()) {
+                    item {
+                        Text("Favourites", color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+                    }
+
+                    items(state.savedLocations, key = { favKey(it) }) { loc ->
+                        val key = favKey(loc)
+                        val mini = state.favouritesMini[key]
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .combinedClickable(
+                                    onClick = { actions.onSelectSaved(loc) },
+                                    onLongClick = { actions.onRemoveSaved(loc) }
+                                ),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+                        ) {
+                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = loc.name,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = when {
+                                            mini == null -> "Loading…"
+                                            mini.isLoading -> "Loading…"
+                                            mini.desc.isNullOrBlank() -> "–"
+                                            else -> mini.desc.replaceFirstChar { it.uppercase() }
+                                        },
+                                        color = Color.White.copy(alpha = 0.70f),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                Spacer(Modifier.width(12.dp))
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
+                                    val tempText = when {
+                                        mini == null || mini.isLoading || mini.tempC == null -> "–"
+                                        state.unit == UnitPref.C -> "${mini.tempC.roundToInt()}°"
+                                        else -> "${(mini.tempC * 9.0 / 5.0 + 32.0).roundToInt()}°"
+                                    }
+                                    Text(
+                                        tempText,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
 
                     item {
-                        Button(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = actions.onUseMyLocation
-                        ) {
-                            Text("Use My Location")
-                        }
+                        Text(
+                            "Tip: long-press a card to remove",
+                            color = Color.White.copy(alpha = 0.55f),
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                 }
 
-                // 3. Layer: The Footer (Anchored to the Bottom Center)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 24.dp), // Lift it up
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    AppFooter(actions)
+                item {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = actions.onUseMyLocation
+                    ) {
+                        Text("Use My Location")
+                    }
                 }
+            }
+
+            // 3. Layer: The Footer (Anchored to the Bottom Center)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 24.dp), // Lift it up
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                AppFooter(actions)
+            }
+
+            FloatingActionButton(
+                onClick = {
+                    context.startActivity(Intent(context, MapSearchActivity::class.java))
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = 110.dp), // lift above footer
+                containerColor = Color(0xFF6B4BB8)
+            ) {
+                Icon(Icons.Filled.Map, contentDescription = "Open Map")
             }
         }
     }
