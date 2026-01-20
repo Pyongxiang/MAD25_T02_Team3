@@ -69,49 +69,46 @@ class FirebaseHelper {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
-        if (username.isBlank()) {
-            onFailure("Username cannot be empty")
-            return
-        }
-        // Validate email is not empty
-        if (email.isBlank()) {
-            onFailure("Email cannot be empty")
-            return
-        }
+        // Basic validation
+        if (username.isBlank()) { onFailure("Username cannot be empty"); return }
+        if (password.length < 6) { onFailure("Password must be at least 6 characters"); return }
 
-        // Validate password is not empty
-        if (password.isBlank()) {
-            onFailure("Password cannot be empty")
-            return
-        }
+        // This is the "Normalized" version that blocks others
+        // e.g., "aDmin" becomes "admin"
+        val normalizedUsername = username.lowercase().trim()
 
-        // Validate password is at least 6 characters
-        if (password.length < 6) {
-            onFailure("Password must be at least 6 characters")
-            return
-        }
+        // STEP 1: Check if the character string is already "taken"
+        db.collection("users")
+            .whereEqualTo("username_lowercase", normalizedUsername)
+            .get()
+            .addOnSuccessListener { documents ->
+                if (!documents.isEmpty) {
+                    // If "admin" exists, this blocks "Admin", "ADMIN", "aDmin", etc.
+                    onFailure("The username '$username' is unavailable.")
+                } else {
+                    // STEP 2: The name is free! Create the Auth account
+                    auth.createUserWithEmailAndPassword(email, password)
+                        .addOnSuccessListener { result ->
+                            val userId = result.user?.uid
+                            if (userId != null) {
+                                // STEP 3: Save the profile with both versions
+                                val userProfile = hashMapOf(
+                                    "username" to username,           // "aDmin" (for display)
+                                    "username_lowercase" to normalizedUsername, // "admin" (for safety)
+                                    "email" to email,
+                                    "uid" to userId
+                                )
 
-        // Call Firebase to create account
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener { result ->
-                val userId = result.user?.uid
-                if (userId != null) {
-                    // CREATE THE USER PROFILE IN FIRESTORE
-                    val userProfile = hashMapOf(
-                        "username" to username,
-                        "email" to email,
-                        "uid" to userId
-                    )
-
-                    db.collection("users").document(userId)
-                        .set(userProfile)
-                        .addOnSuccessListener { onSuccess() }
-                        .addOnFailureListener { onFailure("Account created, but profile failed.") }
+                                db.collection("users").document(userId)
+                                    .set(userProfile)
+                                    .addOnSuccessListener { onSuccess() }
+                                    .addOnFailureListener { onFailure("Profile save failed.") }
+                            }
+                        }
+                        .addOnFailureListener { onFailure(it.message ?: "Sign up failed") }
                 }
             }
-            .addOnFailureListener { exception ->
-                onFailure(exception.message ?: "Sign up failed")
-            }
+            .addOnFailureListener { onFailure("Error checking username availability.") }
     }
 
     /**
