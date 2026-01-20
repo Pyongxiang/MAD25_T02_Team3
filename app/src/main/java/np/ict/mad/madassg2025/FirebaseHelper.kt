@@ -221,5 +221,126 @@ class FirebaseHelper {
                 onFailure(exception.message ?: "Failed to send reset email.")
             }
     }
+
+    /**
+     * Send a friend request
+     */
+    fun sendFriendRequest(targetUser: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        val currentUserId = auth.currentUser?.uid ?: return
+
+        // We need the current user's name to show it to the receiver
+        getUserProfile(onSuccess = { profile ->
+            val myUsername = profile?.get("username")?.toString() ?: "Someone"
+
+            val request = hashMapOf(
+                "fromId" to currentUserId,
+                "fromUsername" to myUsername,
+                "toId" to targetUser.uid,
+                "status" to "pending"
+            )
+
+            val requestId = "${currentUserId}_${targetUser.uid}"
+            db.collection("friend_requests").document(requestId).set(request)
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { onFailure(it.message ?: "Failed") }
+        }, onFailure = { onFailure("Could not fetch your profile") })
+    }
+
+    /**
+     * Accept a friend request
+     * This logic creates the "friend" bond in both users' lists
+     */
+    fun acceptFriendRequest(friend: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+
+        getUserProfile(onSuccess = { profile ->
+            val myUsername = profile?.get("username")?.toString() ?: "User"
+            val myEmail = profile?.get("email")?.toString() ?: ""
+
+            val batch = db.batch()
+
+            // 1. Add friend to MY list
+            val myFriendRef = db.collection("users").document(myId).collection("friends").document(friend.uid)
+            batch.set(myFriendRef, friend)
+
+            // 2. Add ME to THEIR list
+            val theirFriendRef = db.collection("users").document(friend.uid).collection("friends").document(myId)
+            batch.set(theirFriendRef, UserAccount(uid = myId, username = myUsername, email = myEmail))
+
+            // 3. Delete the request (Note: requestId is senderId_receiverId)
+            val requestRef = db.collection("friend_requests").document("${friend.uid}_$myId")
+            batch.delete(requestRef)
+
+            batch.commit()
+                .addOnSuccessListener { onSuccess() }
+                .addOnFailureListener { onFailure(it.message ?: "Failed") }
+        }, onFailure = { onFailure("Profile error") })
+    }
+
+    fun denyFriendRequest(senderId: String, onSuccess: () -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("friend_requests").document("${senderId}_$myId")
+            .delete()
+            .addOnSuccessListener { onSuccess() }
+    }
+
+    /**
+     * Search for a user by their unique username
+     */
+    fun searchUsers(query: String, onSuccess: (List<UserAccount>) -> Unit, onFailure: (String) -> Unit) {
+        val normalizedQuery = query.lowercase().trim()
+        val currentUserId = auth.currentUser?.uid
+
+        db.collection("users")
+            .whereEqualTo("username_lowercase", normalizedQuery)
+            .get()
+            .addOnSuccessListener { documents ->
+                val userList = mutableListOf<UserAccount>()
+                for (doc in documents) {
+                    val user = doc.toObject(UserAccount::class.java)
+                    // Don't show yourself in the search results!
+                    if (user.uid != currentUserId) {
+                        userList.add(user)
+                    }
+                }
+                onSuccess(userList)
+            }
+            .addOnFailureListener { e ->
+                onFailure(e.message ?: "Search failed")
+            }
+    }
+
+    /**
+     * Listen for friend requests sent TO the current user
+     */
+    fun listenToFriendRequests(onUpdate: (List<UserAccount>) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("friend_requests")
+            .whereEqualTo("toId", myId)
+            .whereEqualTo("status", "pending")
+            .addSnapshotListener { snapshot, _ ->
+                val requests = snapshot?.documents?.mapNotNull { doc ->
+                    // We fetch the 'fromId' and 'fromUsername' to show who invited you
+                    UserAccount(
+                        uid = doc.getString("fromId") ?: "",
+                        username = doc.getString("fromUsername") ?: "",
+                        email = "" // Email usually not needed for request cards
+                    )
+                } ?: emptyList()
+                onUpdate(requests)
+            }
+    }
+
+    /**
+     * Listen for changes in the 'friends' sub-collection
+     */
+    fun listenToFriendsList(onUpdate: (List<UserAccount>) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("users").document(myId).collection("friends")
+            .addSnapshotListener { snapshot, _ ->
+                val friends = snapshot?.documents?.mapNotNull { it.toObject(UserAccount::class.java) } ?: emptyList()
+                onUpdate(friends)
+            }
+    }
 }
 
