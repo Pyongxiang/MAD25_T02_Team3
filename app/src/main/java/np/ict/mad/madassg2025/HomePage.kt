@@ -90,7 +90,19 @@ class HomePage : ComponentActivity() {
 
                     // AI Narrator actions
                     onNarrateWeather = { narrateCurrentWeather() },
-                    onStopNarration = { stopNarration() }
+                    onStopNarration = { stopNarration() } ,
+
+                    onOpenFriends = {
+                        // For now, just show a message to prove it's working
+                        android.widget.Toast.makeText(this, "Friends Clicked!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenProfile = {
+                        // Navigate to your new ProfileActivity
+                        val intent = Intent(this, ProfilePage::class.java)
+                        startActivity(intent)
+                    }
+
+
                 )
             )
         }
@@ -490,3 +502,4 @@ class HomePage : ComponentActivity() {
         prefs().edit().putString("saved_locations_$userKey", arr.toString()).apply()
     }
 }
+
