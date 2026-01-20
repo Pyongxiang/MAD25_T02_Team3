@@ -93,8 +93,8 @@ class HomePage : ComponentActivity() {
                     onStopNarration = { stopNarration() } ,
 
                     onOpenFriends = {
-                        // For now, just show a message to prove it's working
-                        android.widget.Toast.makeText(this, "Friends Clicked!", android.widget.Toast.LENGTH_SHORT).show()
+                        val intent = Intent(this@HomePage, FriendPage::class.java)
+                        startActivity(intent)
                     },
                     onOpenProfile = {
                         // Navigate to your new ProfileActivity
