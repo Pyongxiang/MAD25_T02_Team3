@@ -14,6 +14,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MADAssg2025">
 
+        <!-- Google Maps API key -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="YOUR_GOOGLE_MAPS_API_KEY" />
+
         <!-- Launcher -->
         <activity
             android:name="np.ict.mad.madassg2025.MainActivity"
@@ -35,6 +40,11 @@
             android:exported="false" />
 
         <activity android:name=".LocationsActivity" />
+
+        <!-- Map Search -->
+        <activity
+            android:name=".MapSearchActivity"
+            android:exported="false" />
 
 
     </application>
