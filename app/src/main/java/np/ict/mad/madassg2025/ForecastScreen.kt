@@ -1,7 +1,15 @@
 package np.ict.mad.madassg2025
 
+import android.content.Intent // Google Maps Imports
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -47,6 +56,8 @@ fun ForecastScreen(
     var result by remember { mutableStateOf<WeatherForecast.ForecastResult?>(null) }
 
     var selectedHourIndex by remember { mutableStateOf(0) }
+
+    val context = LocalContext.current
 
     // sunrise/sunset info (for SunPathCard)
     var sunriseUtc by remember { mutableStateOf<Long?>(null) }
@@ -112,121 +123,141 @@ fun ForecastScreen(
             .background(bg),
         color = Color.Transparent
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(verticalScroll)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            TopBar(place = place, onBack = onBack)
+        // Box wrapper to overlay the Map FAB
+        Box(modifier = Modifier.fillMaxSize()) {
 
-            when {
-                loading -> Text("Loading forecast...", color = Color.White.copy(alpha = 0.85f))
-                error != null -> Text("Error: $error", color = Color.White)
-                result == null -> Text("No data", color = Color.White)
-                else -> {
-                    val r = result!!
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(verticalScroll)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                TopBar(place = place, onBack = onBack)
 
-                    val today = r.dailyNext5.firstOrNull()
-                    val headerTemp = r.hourlyNext24.firstOrNull()?.tempC ?: today?.highC ?: 0
-                    val headerDesc = r.hourlyNext24.firstOrNull()?.description ?: today?.description ?: "—"
-                    val hi = today?.highC ?: headerTemp
-                    val lo = today?.lowC ?: headerTemp
+                when {
+                    loading -> Text("Loading forecast...", color = Color.White.copy(alpha = 0.85f))
+                    error != null -> Text("Error: $error", color = Color.White)
+                    result == null -> Text("No data", color = Color.White)
+                    else -> {
+                        val r = result!!
 
-                    HeaderBlock(
-                        place = place,
-                        tempC = headerTemp,
-                        condition = headerDesc,
-                        hi = hi,
-                        lo = lo
-                    )
+                        val today = r.dailyNext5.firstOrNull()
+                        val headerTemp = r.hourlyNext24.firstOrNull()?.tempC ?: today?.highC ?: 0
+                        val headerDesc = r.hourlyNext24.firstOrNull()?.description ?: today?.description ?: "—"
+                        val hi = today?.highC ?: headerTemp
+                        val lo = today?.lowC ?: headerTemp
 
-                    val hourly = r.hourlyNext24
-                    val safeIndex = selectedHourIndex.coerceIn(0, kotlin.math.max(0, hourly.size - 1))
-                    val selected = hourly.getOrNull(safeIndex)
-
-                    FrostCard {
-                        Text(
-                            text = "Next 24 hours",
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "3-hour steps • ${hourly.size} points",
-                            color = Color.White.copy(alpha = 0.70f),
-                            style = MaterialTheme.typography.bodySmall
+                        HeaderBlock(
+                            place = place,
+                            tempC = headerTemp,
+                            condition = headerDesc,
+                            hi = hi,
+                            lo = lo
                         )
 
-                        val summary = buildNext24Summary(hourly)
-                        if (summary.isNotBlank()) {
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = summary,
-                                color = Color.White.copy(alpha = 0.82f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        val hourly = r.hourlyNext24
+                        val safeIndex = selectedHourIndex.coerceIn(0, kotlin.math.max(0, hourly.size - 1))
+                        val selected = hourly.getOrNull(safeIndex)
 
-                        if (!sunLine.isNullOrBlank()) {
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = sunLine!!,
-                                color = Color.White.copy(alpha = 0.80f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Spacer(Modifier.height(12.dp))
-
-                        HourlyRowCompact(
-                            items = hourly,
-                            selectedIndex = safeIndex,
-                            onSelect = { selectedHourIndex = it }
-                        )
-
-                        if (hourly.size >= 2) {
-                            Spacer(Modifier.height(12.dp))
-                            TempSparkline(hourly.map { it.tempC })
-                        }
-                    }
-
-                    if (selected != null) {
-                        DetailsCardBelow(selected)
-                    }
-
-                    // ✅ Sun Path card (new)
-                    val sRise = sunriseUtc
-                    val sSet = sunsetUtc
-                    val tz = tzOffsetSec
-                    if (sRise != null && sSet != null && tz != null) {
                         FrostCard {
-                            SunPathCard(
-                                sunriseUtc = sRise,
-                                sunsetUtc = sSet,
-                                tzOffsetSec = tz,
-                                nowUtcSec = System.currentTimeMillis() / 1000L
+                            Text(
+                                text = "Next 24 hours",
+                                color = Color.White.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
                             )
-                        }
-                    }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "3-hour steps • ${hourly.size} points",
+                                color = Color.White.copy(alpha = 0.70f),
+                                style = MaterialTheme.typography.bodySmall
+                            )
 
-                    FrostCard {
-                        Text(
-                            text = "Next 5 days",
-                            color = Color.White.copy(alpha = 0.85f),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        DailyList(r.dailyNext5)
+                            val summary = buildNext24Summary(hourly)
+                            if (summary.isNotBlank()) {
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = summary,
+                                    color = Color.White.copy(alpha = 0.82f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (!sunLine.isNullOrBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    text = sunLine!!,
+                                    color = Color.White.copy(alpha = 0.80f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+
+                            HourlyRowCompact(
+                                items = hourly,
+                                selectedIndex = safeIndex,
+                                onSelect = { selectedHourIndex = it }
+                            )
+
+                            if (hourly.size >= 2) {
+                                Spacer(Modifier.height(12.dp))
+                                TempSparkline(hourly.map { it.tempC })
+                            }
+                        }
+
+                        if (selected != null) {
+                            DetailsCardBelow(selected)
+                        }
+
+                        // ✅ Sun Path card (new)
+                        val sRise = sunriseUtc
+                        val sSet = sunsetUtc
+                        val tz = tzOffsetSec
+                        if (sRise != null && sSet != null && tz != null) {
+                            FrostCard {
+                                SunPathCard(
+                                    sunriseUtc = sRise,
+                                    sunsetUtc = sSet,
+                                    tzOffsetSec = tz,
+                                    nowUtcSec = System.currentTimeMillis() / 1000L
+                                )
+                            }
+                        }
+
+                        FrostCard {
+                            Text(
+                                text = "Next 5 days",
+                                color = Color.White.copy(alpha = 0.85f),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            DailyList(r.dailyNext5)
+                        }
                     }
                 }
+            }
+
+            // Map button at bottom-right of screen
+            FloatingActionButton(
+                onClick = {
+                    context.startActivity(Intent(context, MapSearchActivity::class.java))
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 20.dp, bottom = 70.dp),
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Map,
+                    contentDescription = "Open Map Weather Search"
+                )
             }
         }
     }
