@@ -228,13 +228,14 @@ class FirebaseHelper {
     fun sendFriendRequest(targetUser: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val currentUserId = auth.currentUser?.uid ?: return
 
-        // We need the current user's name to show it to the receiver
         getUserProfile(onSuccess = { profile ->
             val myUsername = profile?.get("username")?.toString() ?: "Someone"
+            val myEmail = profile?.get("email")?.toString() ?: "" // Get your email here
 
             val request = hashMapOf(
                 "fromId" to currentUserId,
                 "fromUsername" to myUsername,
+                "fromEmail" to myEmail,
                 "toId" to targetUser.uid,
                 "status" to "pending"
             )
@@ -243,7 +244,7 @@ class FirebaseHelper {
             db.collection("friend_requests").document(requestId).set(request)
                 .addOnSuccessListener { onSuccess() }
                 .addOnFailureListener { onFailure(it.message ?: "Failed") }
-        }, onFailure = { onFailure("Could not fetch your profile") })
+        }, onFailure = { onFailure("Could not fetch profile") })
     }
 
     /**
@@ -337,11 +338,10 @@ class FirebaseHelper {
             .whereEqualTo("status", "pending")
             .addSnapshotListener { snapshot, _ ->
                 val requests = snapshot?.documents?.mapNotNull { doc ->
-                    // We fetch the 'fromId' and 'fromUsername' to show who invited you
                     UserAccount(
                         uid = doc.getString("fromId") ?: "",
                         username = doc.getString("fromUsername") ?: "",
-                        email = "" // Email usually not needed for request cards
+                        email = doc.getString("fromEmail") ?: "" // Add this line to fetch the email
                     )
                 } ?: emptyList()
                 onUpdate(requests)
