@@ -41,20 +41,31 @@ class FriendPage : ComponentActivity() {
             val pendingRequests = remember { mutableStateListOf<UserAccount>() }
             val currentFriends = remember { mutableStateListOf<UserAccount>() }
 
+            // --- NEW STATE: Track requests I have sent ---
+            val sentRequestIds = remember { mutableStateListOf<String>() }
+
             // --- DIALOG STATES ---
             var showRemoveDialog by remember { mutableStateOf(false) }
             var userToRemove by remember { mutableStateOf<UserAccount?>(null) }
 
-            // Fetch Requests and Friends automatically when page opens
+            // Listeners for real-time updates
             LaunchedEffect(Unit) {
+                // People who want to be my friend
                 firebaseHelper.listenToFriendRequests { requests ->
                     pendingRequests.clear()
                     pendingRequests.addAll(requests)
                 }
 
+                // People I am already friends with
                 firebaseHelper.listenToFriendsList { friends ->
                     currentFriends.clear()
                     currentFriends.addAll(friends)
+                }
+
+                // People I have sent a request to
+                firebaseHelper.listenToSentRequests { sentIds ->
+                    sentRequestIds.clear()
+                    sentRequestIds.addAll(sentIds)
                 }
             }
 
@@ -141,14 +152,31 @@ class FriendPage : ComponentActivity() {
                     Spacer(modifier = Modifier.height(20.dp))
 
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                        // --- SECTION 1: SEARCH RESULTS ---
                         if (searchQuery.isNotEmpty()) {
                             item { SectionTitle("Search Results") }
                             items(searchResults) { user ->
-                                UserCard(user, actionText = "Add") {
-                                    firebaseHelper.sendFriendRequest(user, onSuccess = {}, onFailure = {})
+                                // Check status to decide button text
+                                val isAlreadyFriend = currentFriends.any { it.uid == user.uid }
+                                val isSent = sentRequestIds.contains(user.uid)
+
+                                val buttonText = when {
+                                    isAlreadyFriend -> "Friend"
+                                    isSent -> "Pending"
+                                    else -> "Add"
+                                }
+
+                                UserCard(user, actionText = buttonText) {
+                                    when (buttonText) {
+                                        "Add" -> firebaseHelper.sendFriendRequest(user, onSuccess = {}, onFailure = {})
+                                        "Pending" -> firebaseHelper.cancelFriendRequest(user.uid) {}
+                                        "Friend" -> { /* Optional: show profile */ }
+                                    }
                                 }
                             }
                         } else {
+                            // --- SECTION 2: INCOMING REQUESTS ---
                             if (pendingRequests.isNotEmpty()) {
                                 item { SectionTitle("Friend Requests") }
                                 items(pendingRequests) { user ->
@@ -159,6 +187,7 @@ class FriendPage : ComponentActivity() {
                                 }
                             }
 
+                            // --- SECTION 3: MY FRIENDS ---
                             item { SectionTitle("My Friends") }
                             if (currentFriends.isEmpty() && pendingRequests.isEmpty()) {
                                 item {
@@ -168,7 +197,6 @@ class FriendPage : ComponentActivity() {
                                 }
                             }
 
-                            // UPDATED: Now uses "Remove" action and triggers the dialog
                             items(currentFriends) { friend ->
                                 UserCard(friend, actionText = "Remove") {
                                     userToRemove = friend
@@ -183,7 +211,6 @@ class FriendPage : ComponentActivity() {
     }
 }
 
-// ... SectionTitle, UserCard, and RequestActionCard remain the same ...
 @Composable
 fun SectionTitle(title: String) {
     Text(
@@ -214,7 +241,13 @@ fun UserCard(user: UserAccount, actionText: String, onAction: () -> Unit) {
                 Text(user.email, style = MaterialTheme.typography.bodySmall)
             }
 
-            Button(onClick = onAction) {
+            // Button style changes if it is "Pending" or "Friend"
+            val isNeutral = actionText == "Pending" || actionText == "Friend"
+
+            Button(
+                onClick = onAction,
+                colors = if (isNeutral) ButtonDefaults.buttonColors(containerColor = Color.Gray) else ButtonDefaults.buttonColors()
+            ) {
                 Text(actionText)
             }
         }

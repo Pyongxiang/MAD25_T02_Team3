@@ -228,23 +228,51 @@ class FirebaseHelper {
     fun sendFriendRequest(targetUser: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val currentUserId = auth.currentUser?.uid ?: return
 
-        getUserProfile(onSuccess = { profile ->
-            val myUsername = profile?.get("username")?.toString() ?: "Someone"
-            val myEmail = profile?.get("email")?.toString() ?: "" // Get your email here
+        // Create the unique ID based on the sender and receiver
+        val requestId = "${currentUserId}_${targetUser.uid}"
 
-            val request = hashMapOf(
-                "fromId" to currentUserId,
-                "fromUsername" to myUsername,
-                "fromEmail" to myEmail,
-                "toId" to targetUser.uid,
-                "status" to "pending"
-            )
+        // STEP 1: Check if this specific request already exists
+        db.collection("friend_requests").document(requestId).get()
+            .addOnSuccessListener { document ->
+                if (document.exists()) {
+                    // If the document exists, a request is already pending
+                    onFailure("Request already sent to this user!")
+                } else {
+                    // STEP 2: The request is new, so we fetch your profile info to "stamp" the request
+                    getUserProfile(onSuccess = { profile ->
+                        val myUsername = profile?.get("username")?.toString() ?: "Someone"
+                        val myEmail = profile?.get("email")?.toString() ?: ""
 
-            val requestId = "${currentUserId}_${targetUser.uid}"
-            db.collection("friend_requests").document(requestId).set(request)
-                .addOnSuccessListener { onSuccess() }
-                .addOnFailureListener { onFailure(it.message ?: "Failed") }
-        }, onFailure = { onFailure("Could not fetch profile") })
+                        val requestData = hashMapOf(
+                            "fromId" to currentUserId,
+                            "fromUsername" to myUsername,
+                            "fromEmail" to myEmail,
+                            "toId" to targetUser.uid,
+                            "status" to "pending"
+                        )
+
+                        // STEP 3: Write the request to the 'friend_requests' collection
+                        db.collection("friend_requests").document(requestId)
+                            .set(requestData)
+                            .addOnSuccessListener { onSuccess() }
+                            .addOnFailureListener { onFailure(it.message ?: "Failed to send request") }
+
+                    }, onFailure = {
+                        onFailure("Could not fetch your profile to send request")
+                    })
+                }
+            }
+            .addOnFailureListener { e ->
+                onFailure("Database error: ${e.message}")
+            }
+    }
+
+    fun cancelFriendRequest(targetUserId: String, onSuccess: () -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        val requestId = "${myId}_$targetUserId"
+        db.collection("friend_requests").document(requestId)
+            .delete()
+            .addOnSuccessListener { onSuccess() }
     }
 
     /**
@@ -325,6 +353,18 @@ class FirebaseHelper {
             }
             .addOnFailureListener { e ->
                 onFailure(e.message ?: "Search failed")
+            }
+    }
+
+    fun listenToSentRequests(onUpdate: (List<String>) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("friend_requests")
+            .whereEqualTo("fromId", myId)
+            .whereEqualTo("status", "pending")
+            .addSnapshotListener { snapshot, _ ->
+                // We only need the list of UIDs we sent requests to
+                val sentToIds = snapshot?.documents?.mapNotNull { it.getString("toId") } ?: emptyList()
+                onUpdate(sentToIds)
             }
     }
 
