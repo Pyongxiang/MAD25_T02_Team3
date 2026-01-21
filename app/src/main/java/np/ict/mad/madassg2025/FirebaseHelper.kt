@@ -284,6 +284,23 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
+    fun removeFriend(friendId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        val batch = db.batch()
+
+        // 1. Reference to the friend in my list
+        val myFriendRef = db.collection("users").document(myId).collection("friends").document(friendId)
+        batch.delete(myFriendRef)
+
+        // 2. Reference to me in the friend's list
+        val theirFriendRef = db.collection("users").document(friendId).collection("friends").document(myId)
+        batch.delete(theirFriendRef)
+
+        batch.commit()
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onFailure(it.message ?: "Failed to remove friend") }
+    }
+
     /**
      * Search for a user by their unique username
      */

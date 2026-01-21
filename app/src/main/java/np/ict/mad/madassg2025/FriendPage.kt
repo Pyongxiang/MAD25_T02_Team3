@@ -41,6 +41,10 @@ class FriendPage : ComponentActivity() {
             val pendingRequests = remember { mutableStateListOf<UserAccount>() }
             val currentFriends = remember { mutableStateListOf<UserAccount>() }
 
+            // --- DIALOG STATES ---
+            var showRemoveDialog by remember { mutableStateOf(false) }
+            var userToRemove by remember { mutableStateOf<UserAccount?>(null) }
+
             // Fetch Requests and Friends automatically when page opens
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToFriendRequests { requests ->
@@ -54,10 +58,39 @@ class FriendPage : ComponentActivity() {
                 }
             }
 
+            // --- CONFIRMATION DIALOG ---
+            if (showRemoveDialog && userToRemove != null) {
+                AlertDialog(
+                    onDismissRequest = { showRemoveDialog = false },
+                    title = { Text(text = "Remove Friend") },
+                    text = { Text(text = "Are you sure you want to remove ${userToRemove?.username}?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                firebaseHelper.removeFriend(userToRemove!!.uid,
+                                    onSuccess = {
+                                        showRemoveDialog = false
+                                        userToRemove = null
+                                    },
+                                    onFailure = { /* Handle error */ }
+                                )
+                            }
+                        ) {
+                            Text("Yes", color = Color.Red)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showRemoveDialog = false }) {
+                            Text("No")
+                        }
+                    }
+                )
+            }
+
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
 
-                    // --- ADDED BACK: TOP BAR (Back Arrow & Title) ---
+                    // --- TOP BAR ---
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -112,9 +145,7 @@ class FriendPage : ComponentActivity() {
                             item { SectionTitle("Search Results") }
                             items(searchResults) { user ->
                                 UserCard(user, actionText = "Add") {
-                                    firebaseHelper.sendFriendRequest(user, onSuccess = {
-                                        // Optional: Toast message
-                                    }, onFailure = {})
+                                    firebaseHelper.sendFriendRequest(user, onSuccess = {}, onFailure = {})
                                 }
                             }
                         } else {
@@ -136,8 +167,13 @@ class FriendPage : ComponentActivity() {
                                         style = MaterialTheme.typography.bodySmall)
                                 }
                             }
+
+                            // UPDATED: Now uses "Remove" action and triggers the dialog
                             items(currentFriends) { friend ->
-                                UserCard(friend, actionText = "Message") { /* Chat later */ }
+                                UserCard(friend, actionText = "Remove") {
+                                    userToRemove = friend
+                                    showRemoveDialog = true
+                                }
                             }
                         }
                     }
@@ -147,6 +183,7 @@ class FriendPage : ComponentActivity() {
     }
 }
 
+// ... SectionTitle, UserCard, and RequestActionCard remain the same ...
 @Composable
 fun SectionTitle(title: String) {
     Text(
