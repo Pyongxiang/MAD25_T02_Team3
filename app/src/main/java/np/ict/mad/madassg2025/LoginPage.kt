@@ -32,12 +32,10 @@ fun LoginPage() {
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) } // Toggle for Eye Icon
+    var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(false) }
-
-    // toggle decides if the page acts as Login or Sign Up
     var isLoginMode by remember { mutableStateOf(true) }
 
     val firebaseHelper = remember { FirebaseHelper() }
@@ -46,8 +44,7 @@ fun LoginPage() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-
-        // --- OPTIONAL HOME BYPASS ---
+        // --- HOME BYPASS (UPDATED WITH FLAGS) ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -56,6 +53,8 @@ fun LoginPage() {
         ) {
             Button(onClick = {
                 val intent = Intent(context, HomePage::class.java)
+                // Clear stack even for bypass
+                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 context.startActivity(intent)
             }) {
                 Text("Home")
@@ -69,7 +68,6 @@ fun LoginPage() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
             // --- HEADER ---
             Text(
                 text = if (isLoginMode) "Welcome Back" else "Create Account",
@@ -80,7 +78,6 @@ fun LoginPage() {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- USERNAME (ONLY FOR SIGN UP) ---
             if (!isLoginMode) {
                 OutlinedTextField(
                     value = username,
@@ -88,14 +85,11 @@ fun LoginPage() {
                     label = { Text("Username") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Next
-                    )
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // --- EMAIL INPUT ---
             OutlinedTextField(
                 value = email,
                 onValueChange = { email = it },
@@ -110,14 +104,12 @@ fun LoginPage() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- PASSWORD INPUT (WITH EYE TOGGLE) ---
             OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Password") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
-                // Switches between Dots and Plain Text
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Password,
@@ -125,22 +117,18 @@ fun LoginPage() {
                 ),
                 trailingIcon = {
                     val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                    val description = if (passwordVisible) "Hide password" else "Show password"
-
                     IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(imageVector = image, contentDescription = description)
+                        Icon(imageVector = image, contentDescription = null)
                     }
                 }
             )
 
-            // --- REMEMBER ME & FORGOT PASSWORD ROW ---
             if (isLoginMode) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // LEFT SIDE: Remember Me Checkbox
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = rememberMe,
@@ -149,14 +137,12 @@ fun LoginPage() {
                         Text("Remember Me", style = MaterialTheme.typography.bodySmall)
                     }
 
-                    // RIGHT SIDE: Forgot Password Link
                     TextButton(
                         onClick = {
                             if (email.isBlank()) {
                                 errorMessage = "Enter your email to reset the password."
                                 return@TextButton
                             }
-
                             isLoading = true
                             firebaseHelper.forgotPassword(email,
                                 onSuccess = {
@@ -176,19 +162,14 @@ fun LoginPage() {
                 }
             }
 
-            // --- ERROR MESSAGE ---
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage!!,
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 14.sp
-                )
+                Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- ACTION BUTTON (LOGIN / SIGN UP) ---
+            // --- ACTION BUTTON ---
             Button(
                 onClick = {
                     isLoading = true
@@ -198,14 +179,14 @@ fun LoginPage() {
                         firebaseHelper.signIn(email, password,
                             onSuccess = {
                                 isLoading = false
-
-                                // === SAVE PREFERENCE TO LOCAL STORAGE ===
                                 prefs.edit().putBoolean("remember", rememberMe).apply()
 
-                                Toast.makeText(context, "Login Successful!", Toast.LENGTH_SHORT).show()
+                                // === UPDATED NAVIGATION WITH FLAGS ===
                                 val intent = Intent(context, HomePage::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 context.startActivity(intent)
-                                (context as? android.app.Activity)?.finish()
+
+                                Toast.makeText(context, "Login Successful!", Toast.LENGTH_SHORT).show()
                             },
                             onFailure = { error ->
                                 isLoading = false
@@ -219,10 +200,13 @@ fun LoginPage() {
                             username = username,
                             onSuccess = {
                                 isLoading = false
-                                Toast.makeText(context, "Account Created!", Toast.LENGTH_SHORT).show()
+
+                                // === UPDATED NAVIGATION WITH FLAGS ===
                                 val intent = Intent(context, HomePage::class.java)
+                                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 context.startActivity(intent)
-                                (context as? android.app.Activity)?.finish()
+
+                                Toast.makeText(context, "Account Created!", Toast.LENGTH_SHORT).show()
                             },
                             onFailure = { error ->
                                 isLoading = false
@@ -235,10 +219,7 @@ fun LoginPage() {
                 enabled = !isLoading
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
                 } else {
                     Text(text = if (isLoginMode) "Login" else "Sign Up")
                 }
@@ -246,7 +227,6 @@ fun LoginPage() {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- TOGGLE TEXT ---
             Text(
                 text = if (isLoginMode) "Don't have an account? Sign Up" else "Already have an account? Login",
                 color = MaterialTheme.colorScheme.primary,
