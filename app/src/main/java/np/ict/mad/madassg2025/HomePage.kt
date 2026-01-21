@@ -96,6 +96,12 @@ class HomePage : ComponentActivity() {
                         val intent = Intent(this@HomePage, FriendPage::class.java)
                         startActivity(intent)
                     },
+
+                    onOpenChats = {
+                        val intent = Intent(this@HomePage, MessagePage::class.java)
+                        startActivity(intent)
+                    },
+
                     onOpenProfile = {
                         // Navigate to your new ProfileActivity
                         val intent = Intent(this, ProfilePage::class.java)

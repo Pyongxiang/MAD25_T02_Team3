@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material3.Icon
 
 data class HomeActions(
@@ -71,6 +72,7 @@ data class HomeActions(
     val onStopNarration: () -> Unit,
 
     val onOpenFriends: () -> Unit,
+    val onOpenChats: () -> Unit,
     val onOpenProfile: () -> Unit
 )
 
@@ -653,7 +655,6 @@ private fun AppFooter(actions: HomeActions) {
                         .clickable { actions.onOpenFriends() }
                         .padding(8.dp)
                 ) {
-                    // Changed emoji to Icon for color control
                     Icon(
                         imageVector = Icons.Default.People,
                         contentDescription = "Friends",
@@ -668,6 +669,28 @@ private fun AppFooter(actions: HomeActions) {
                     )
                 }
 
+                // NEW: Chats
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { actions.onOpenChats() }
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChatBubble,
+                        contentDescription = "Chats",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Chats",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White
+                    )
+                }
+
                 // Profile
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -676,7 +699,6 @@ private fun AppFooter(actions: HomeActions) {
                         .clickable { actions.onOpenProfile() }
                         .padding(8.dp)
                 ) {
-                    // Changed emoji to Icon for color control
                     Icon(
                         imageVector = Icons.Default.Person,
                         contentDescription = "Profile",

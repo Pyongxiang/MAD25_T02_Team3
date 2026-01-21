@@ -13,55 +13,22 @@ class FirebaseHelper {
 
     // ========== FUNCTIONS ==========
 
-    /**
-     * Get the currently logged-in user
-     *
-     * @return FirebaseUser if someone is logged in, null if not
-     *
-     * Usage: val user = firebaseHelper.getCurrentUser()
-     */
+    // Get currently logged in user
     fun getCurrentUser(): FirebaseUser? {
         return auth.currentUser
     }
 
-    /**
-     * Get the currently logged-in user's email
-     *
-     * @return Email string if logged in, null if not
-     *
-     * Usage: val email = firebaseHelper.getCurrentUserEmail()
-     */
+    // Get currently logged in user email
     fun getCurrentUserEmail(): String? {
         return auth.currentUser?.email
     }
 
-    /**
-     * Check if anyone is logged in
-     *
-     * @return true if logged in, false if not
-     *
-     * Usage: if (firebaseHelper.isLoggedIn()) { ... }
-     */
+   // Check if anyone is logged in
     fun isLoggedIn(): Boolean {
         return auth.currentUser != null
     }
 
-    /**
-     * Create a new user account (Sign Up)
-     *
-     * @param email User's email address
-     * @param password User's password (minimum 6 characters)
-     * @param onSuccess Callback - called if sign up succeeds
-     * @param onFailure Callback - called if sign up fails, gets error message
-     *
-     * Usage:
-     * firebaseHelper.signUp(
-     *     email = "test@example.com",
-     *     password = "123456",
-     *     onSuccess = { /* Account created! */ },
-     *     onFailure = { error -> /* Show error */ }
-     * )
-     */
+    // Create new user by signing up
     fun signUp(
         email: String,
         password: String,
@@ -69,7 +36,7 @@ class FirebaseHelper {
         onSuccess: () -> Unit,
         onFailure: (String) -> Unit
     ) {
-        // Basic validation
+        // Data validation
         if (username.isBlank()) { onFailure("Username cannot be empty"); return }
         if (password.length < 6) { onFailure("Password must be at least 6 characters"); return }
 
@@ -93,8 +60,8 @@ class FirebaseHelper {
                             if (userId != null) {
                                 // STEP 3: Save the profile with both versions
                                 val userProfile = hashMapOf(
-                                    "username" to username,           // "aDmin" (for display)
-                                    "username_lowercase" to normalizedUsername, // "admin" (for safety)
+                                    "username" to username,
+                                    "username_lowercase" to normalizedUsername,
                                     "email" to email,
                                     "uid" to userId
                                 )
@@ -111,22 +78,7 @@ class FirebaseHelper {
             .addOnFailureListener { onFailure("Error checking username availability.") }
     }
 
-    /**
-     * Login with existing account (Sign In)
-     *
-     * @param email User's email address
-     * @param password User's password
-     * @param onSuccess Callback - called if login succeeds
-     * @param onFailure Callback - called if login fails, gets error message
-     *
-     * Usage:
-     * firebaseHelper.signIn(
-     *     email = "test@example.com",
-     *     password = "123456",
-     *     onSuccess = { /* Logged in! */ },
-     *     onFailure = { error -> /* Show error */ }
-     * )
-     */
+   // Log in with existing account
     fun signIn(
         email: String,
         password: String,
@@ -157,49 +109,12 @@ class FirebaseHelper {
             }
     }
 
-    /**
-     * Sign out current user (Logout)
-     *
-     * Usage: firebaseHelper.signOut()
-     */
+    // Sign out logged in account
     fun signOut() {
         auth.signOut()
     }
 
-
-    /**
-     * Sends a password reset email to the specified email address.
-     *
-     * @param email The user's email address.
-     * @param onSuccess Callback - called if the email is successfully sent.
-     * @param onFailure Callback - called if sending fails, gets error message.
-     *
-     * Usage:
-     * firebaseHelper.forgotPassword(
-     * email = "test@example.com",
-     * onSuccess = { /* Tell the user to check their email */ },
-     * onFailure = { error -> /* Show error */ }
-     * )
-     */
-
-    /**
-     * Retrieve user profile details from Firestore
-     */
-    fun getUserProfile(onSuccess: (Map<String, Any>?) -> Unit, onFailure: (String) -> Unit) {
-        val userId = auth.currentUser?.uid
-        if (userId != null) {
-            db.collection("users").document(userId)
-                .get()
-                .addOnSuccessListener { document ->
-                    onSuccess(document.data)
-                }
-                .addOnFailureListener { e ->
-                    onFailure(e.message ?: "Failed to fetch profile")
-                }
-        } else {
-            onFailure("No user logged in")
-        }
-    }
+    // Send password reset email to email used when signing up
     fun forgotPassword(
         email: String,
         onSuccess: () -> Unit,
@@ -222,9 +137,24 @@ class FirebaseHelper {
             }
     }
 
-    /**
-     * Send a friend request
-     */
+    // Get userprofile for friends page
+    fun getUserProfile(onSuccess: (Map<String, Any>?) -> Unit, onFailure: (String) -> Unit) {
+        val userId = auth.currentUser?.uid
+        if (userId != null) {
+            db.collection("users").document(userId)
+                .get()
+                .addOnSuccessListener { document ->
+                    onSuccess(document.data)
+                }
+                .addOnFailureListener { e ->
+                    onFailure(e.message ?: "Failed to fetch profile")
+                }
+        } else {
+            onFailure("No user logged in")
+        }
+    }
+
+    // Send a friend request
     fun sendFriendRequest(targetUser: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val currentUserId = auth.currentUser?.uid ?: return
 
@@ -275,10 +205,7 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
-    /**
-     * Accept a friend request
-     * This logic creates the "friend" bond in both users' lists
-     */
+    // Accept friend request
     fun acceptFriendRequest(friend: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
 
@@ -330,9 +257,7 @@ class FirebaseHelper {
             .addOnFailureListener { onFailure(it.message ?: "Failed to remove friend") }
     }
 
-    /**
-     * Search for a user by their unique username
-     */
+    // Search user by their username
     fun searchUsers(query: String, onSuccess: (List<UserAccount>) -> Unit, onFailure: (String) -> Unit) {
         val normalizedQuery = query.lowercase().trim()
         val currentUserId = auth.currentUser?.uid
@@ -368,9 +293,7 @@ class FirebaseHelper {
             }
     }
 
-    /**
-     * Listen for friend requests sent TO the current user
-     */
+    // Get friend requests from the user
     fun listenToFriendRequests(onUpdate: (List<UserAccount>) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("friend_requests")
@@ -388,9 +311,7 @@ class FirebaseHelper {
             }
     }
 
-    /**
-     * Listen for changes in the 'friends' sub-collection
-     */
+    // Get friend requests sent from another user
     fun listenToFriendsList(onUpdate: (List<UserAccount>) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("users").document(myId).collection("friends")
