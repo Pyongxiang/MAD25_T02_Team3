@@ -5,6 +5,8 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.ListenerRegistration
 
 class FirebaseHelper {
     // getting the "keys" to Firebase's authentication system
@@ -319,6 +321,79 @@ class FirebaseHelper {
                 val friends = snapshot?.documents?.mapNotNull { it.toObject(UserAccount::class.java) } ?: emptyList()
                 onUpdate(friends)
             }
+    }
+
+    // ========== FAVOURITES (Firestore) ==========
+
+    // Stable doc id so "same location" overwrites instead of duplicates
+    private fun favDocId(lat: Double, lon: Double): String {
+        // Firestore doc ids cannot contain "/" etc
+        // Using fixed precision reduces duplicates caused by tiny float differences
+        val latKey = "%.5f".format(lat).replace(".", "_")
+        val lonKey = "%.5f".format(lon).replace(".", "_")
+        return "${latKey}_${lonKey}"
+    }
+
+    fun listenToFavourites(
+        userId: String,
+        onUpdate: (List<Map<String, Any>>) -> Unit,
+        onFailure: (String) -> Unit
+    ): ListenerRegistration {
+        return db.collection("users")
+            .document(userId)
+            .collection("favourites")
+            .orderBy("updatedAt") // optional
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) {
+                    onFailure(e.message ?: "Failed to listen to favourites")
+                    return@addSnapshotListener
+                }
+                val list = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
+                onUpdate(list)
+            }
+    }
+
+    fun addFavourite(
+        userId: String,
+        name: String,
+        lat: Double,
+        lon: Double,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val docId = favDocId(lat, lon)
+        val data = hashMapOf(
+            "name" to name,
+            "lat" to lat,
+            "lon" to lon,
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        db.collection("users")
+            .document(userId)
+            .collection("favourites")
+            .document(docId)
+            .set(data)
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onFailure(it.message ?: "Failed to add favourite") }
+    }
+
+    fun removeFavourite(
+        userId: String,
+        lat: Double,
+        lon: Double,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        val docId = favDocId(lat, lon)
+
+        db.collection("users")
+            .document(userId)
+            .collection("favourites")
+            .document(docId)
+            .delete()
+            .addOnSuccessListener { onSuccess() }
+            .addOnFailureListener { onFailure(it.message ?: "Failed to remove favourite") }
     }
 }
 
