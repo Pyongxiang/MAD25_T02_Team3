@@ -4,6 +4,7 @@
     <!-- Location (typical for your app) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Network (needed for weather + reverse geocode) -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -57,6 +58,11 @@
         <activity
             android:name=".MessagePage"
             android:exported="false" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
 
     </application>
 </manifest>

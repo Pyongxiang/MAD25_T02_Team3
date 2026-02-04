@@ -88,4 +88,9 @@ dependencies {
     implementation("com.google.maps.android:maps-compose:2.11.4") // Google Maps
     implementation("com.google.maps.android:maps-compose-utils:2.11.4") // Google Maps
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+
+
 }

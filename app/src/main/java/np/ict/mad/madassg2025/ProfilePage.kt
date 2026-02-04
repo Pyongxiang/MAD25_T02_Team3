@@ -115,6 +115,19 @@ class ProfilePage : ComponentActivity() {
 
                         Spacer(modifier = Modifier.weight(1f))
 
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = {
+                                val intent = Intent(this@ProfilePage, SettingsActivity::class.java)
+                                startActivity(intent)
+                            }
+                        ) {
+                            Text("Settings")
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+
                         // --- LOGOUT BUTTON ---
                         Button(
                             modifier = Modifier.fillMaxWidth(),
