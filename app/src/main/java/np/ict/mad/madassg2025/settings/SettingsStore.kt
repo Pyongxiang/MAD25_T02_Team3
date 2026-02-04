@@ -21,12 +21,18 @@ class SettingsStore(private val context: Context) {
     private val KEY_DEFAULT_LAT = doublePreferencesKey("default_loc_lat")
     private val KEY_DEFAULT_LON = doublePreferencesKey("default_loc_lon")
 
+    private val KEY_ALERT_HOUR = stringPreferencesKey("alert_hour")     // "0".."23"
+    private val KEY_ALERT_MIN = stringPreferencesKey("alert_minute")    // "0".."59"
+
     val unitsFlow: Flow<String> = context.dataStore.data.map { it[KEY_UNITS] ?: "C" }
     val rainAlertsFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_RAIN_ALERTS] ?: false }
 
     val defaultNameFlow: Flow<String> = context.dataStore.data.map { it[KEY_DEFAULT_NAME] ?: "" }
     val defaultLatFlow: Flow<Double> = context.dataStore.data.map { it[KEY_DEFAULT_LAT] ?: Double.NaN }
     val defaultLonFlow: Flow<Double> = context.dataStore.data.map { it[KEY_DEFAULT_LON] ?: Double.NaN }
+
+    val alertHourFlow: Flow<Int> = context.dataStore.data.map { (it[KEY_ALERT_HOUR] ?: "8").toInt() }
+    val alertMinuteFlow: Flow<Int> = context.dataStore.data.map { (it[KEY_ALERT_MIN] ?: "0").toInt() }
 
     suspend fun setUnits(value: String) {
         context.dataStore.edit { it[KEY_UNITS] = value }
@@ -46,6 +52,20 @@ class SettingsStore(private val context: Context) {
             it[KEY_DEFAULT_LAT] = lat
             it[KEY_DEFAULT_LON] = lon
         }
+    }
+
+    suspend fun setAlertTime(hour: Int, minute: Int) {
+        context.dataStore.edit {
+            it[KEY_ALERT_HOUR] = hour.coerceIn(0, 23).toString()
+            it[KEY_ALERT_MIN] = minute.coerceIn(0, 59).toString()
+        }
+    }
+
+    suspend fun getAlertTime(): Pair<Int, Int> {
+        val data = context.dataStore.data.first()
+        val h = (data[KEY_ALERT_HOUR] ?: "8").toInt()
+        val m = (data[KEY_ALERT_MIN] ?: "0").toInt()
+        return h to m
     }
 
     suspend fun getDefaultLocation(): DefaultLocation? {
