@@ -26,7 +26,6 @@ class WeatherAlertWorker(
 
         createWeatherChannel(context)
 
-        // Uses your existing WeatherForecast class
         val forecast = withContext(Dispatchers.IO) {
             WeatherForecast().getHourly24AndDaily5(def.lat, def.lon)
         } ?: return Result.retry()
@@ -40,9 +39,8 @@ class WeatherAlertWorker(
             sendRainNotification(context, def.name)
         }
 
-        // Reschedule for the next day at the user-selected time
-        val (hour, minute) = store.getAlertTime()
-        WeatherAlertScheduler.scheduleDailyAt(context, hour, minute)
+        // IMPORTANT: We do NOT reschedule inside the worker anymore.
+        // Scheduling is handled by PeriodicWorkRequest in WeatherAlertScheduler.
 
         return Result.success()
     }
@@ -60,7 +58,7 @@ class WeatherAlertWorker(
         )
 
         val notif = NotificationCompat.Builder(context, WEATHER_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_cloudy) // change if you don't have ic_cloudy
+            .setSmallIcon(R.drawable.ic_cloudy)
             .setContentTitle("Rain likely soon")
             .setContentText("Rain is expected in $locationName. Bring an umbrella.")
             .setContentIntent(pendingIntent)

@@ -46,18 +46,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import np.ict.mad.madassg2025.settings.AlertFrequency
 import np.ict.mad.madassg2025.settings.SettingsStore
 import np.ict.mad.madassg2025.ui.home.SavedLocation
 import org.json.JSONArray
 import kotlin.math.abs
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-
 
 class SettingsActivity : ComponentActivity() {
 
@@ -106,13 +104,23 @@ private fun SettingsScreen(
     val defaultLat by store.defaultLatFlow.collectAsState(initial = Double.NaN)
     val defaultLon by store.defaultLonFlow.collectAsState(initial = Double.NaN)
 
-    val alertHour by store.alertHourFlow.collectAsState(initial = 8)
-    val alertMin by store.alertMinuteFlow.collectAsState(initial = 0)
+    val freqName by store.alertFrequencyFlow.collectAsState(initial = AlertFrequency.DAILY.name)
+    val alertFrequency = AlertFrequency.fromStored(freqName)
 
     val savedLocations = remember { loadSavedLocationsForUser(context) }
 
     val bg = MaterialTheme.colorScheme.background
     val cardShape = RoundedCornerShape(16.dp)
+
+    fun rescheduleIfEnabled() {
+        scope.launch {
+            if (store.isRainAlertsEnabled()) {
+                onRequestNotificationPermission()
+                val f = store.getAlertFrequency()
+                WeatherAlertScheduler.schedule(context, f)
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = bg) {
         Column {
@@ -189,7 +197,7 @@ private fun SettingsScreen(
                 ) {
                     Column(Modifier.padding(14.dp)) {
 
-                        // Default location
+                        // Default location display
                         val currentDefault = if (!defaultLat.isNaN() && !defaultLon.isNaN()) {
                             defaultName.ifBlank { "Default location" }
                         } else "Not set"
@@ -197,7 +205,7 @@ private fun SettingsScreen(
                         SettingRow(
                             label = "Default location",
                             value = currentDefault,
-                            helper = "Used for daily rain checks."
+                            helper = "Used for rain checks."
                         )
 
                         Spacer(Modifier.height(10.dp))
@@ -212,7 +220,6 @@ private fun SettingsScreen(
                             )
                             Spacer(Modifier.height(8.dp))
 
-                            // Keep UI clean: show first 6 only
                             savedLocations.take(6).forEach { loc ->
                                 LocationPickRow(
                                     name = loc.name,
@@ -223,11 +230,8 @@ private fun SettingsScreen(
                                     onPick = {
                                         scope.launch {
                                             store.setDefaultLocation(loc.name, loc.lat, loc.lon)
-                                            if (alertsEnabled) {
-                                                onRequestNotificationPermission()
-                                                WeatherAlertScheduler.scheduleDailyAt(context, alertHour, alertMin)
-                                            }
                                         }
+                                        rescheduleIfEnabled()
                                     }
                                 )
                                 Spacer(Modifier.height(8.dp))
@@ -242,58 +246,20 @@ private fun SettingsScreen(
                         Divider()
                         Spacer(Modifier.height(14.dp))
 
-                        // Alert time
+                        // Alert Frequency
                         SettingRow(
-                            label = "Alert time",
-                            value = "%02d:%02d".format(alertHour, alertMin),
-                            helper = "Runs once a day near this time."
+                            label = "Alert frequency",
+                            value = alertFrequency.label,
+                            helper = "How often the app checks for rain and notifies you."
                         )
 
                         Spacer(Modifier.height(10.dp))
 
-                        Text(
-                            text = "Hour",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        ChipRow(
-                            items = listOf(6, 7, 8, 9, 10, 11, 12, 18, 20, 22),
-                            selected = alertHour,
-                            label = { "%02d".format(it) },
-                            onSelect = { h ->
-                                scope.launch {
-                                    store.setAlertTime(h, alertMin)
-                                    if (alertsEnabled) {
-                                        onRequestNotificationPermission()
-                                        WeatherAlertScheduler.scheduleDailyAt(context, h, alertMin)
-                                    }
-                                }
-                            }
-                        )
-
-                        Spacer(Modifier.height(12.dp))
-
-                        Text(
-                            text = "Minute",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.height(8.dp))
-
-                        ChipRow(
-                            items = listOf(0, 15, 30, 45),
-                            selected = alertMin,
-                            label = { "%02d".format(it) },
-                            onSelect = { m ->
-                                scope.launch {
-                                    store.setAlertTime(alertHour, m)
-                                    if (alertsEnabled) {
-                                        onRequestNotificationPermission()
-                                        WeatherAlertScheduler.scheduleDailyAt(context, alertHour, m)
-                                    }
-                                }
+                        FrequencyChips(
+                            selected = alertFrequency,
+                            onPick = { picked ->
+                                scope.launch { store.setAlertFrequency(picked) }
+                                rescheduleIfEnabled()
                             }
                         )
 
@@ -301,16 +267,15 @@ private fun SettingsScreen(
                         Divider()
                         Spacer(Modifier.height(14.dp))
 
-                        // Toggle
+                        // Enable alerts toggle
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text("Rain alerts", fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "Notifies you when rain is likely soon (based on your default location).",
+                                    "Shows a notification when rain is likely (based on your default location).",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -322,7 +287,8 @@ private fun SettingsScreen(
                                         store.setRainAlertsEnabled(enabled)
                                         if (enabled) {
                                             onRequestNotificationPermission()
-                                            WeatherAlertScheduler.scheduleDailyAt(context, alertHour, alertMin)
+                                            val f = store.getAlertFrequency()
+                                            WeatherAlertScheduler.schedule(context, f)
                                         } else {
                                             WeatherAlertScheduler.cancel(context)
                                         }
@@ -330,6 +296,13 @@ private fun SettingsScreen(
                                 }
                             )
                         }
+
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Note: Android’s reliable minimum interval is 15 minutes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -359,11 +332,15 @@ private fun SettingsSectionTitle(text: String) {
     )
 }
 
+/**
+ * IMPORTANT FIX:
+ * - Give the value text its own weight and right-align it.
+ * - This prevents it from being measured in a tiny width (which caused “vertical letters”).
+ */
 @Composable
 private fun SettingRow(label: String, value: String, helper: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
         Column(Modifier.weight(1f)) {
@@ -374,9 +351,13 @@ private fun SettingRow(label: String, value: String, helper: String) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+
         Spacer(Modifier.width(12.dp))
+
         Text(
-            value,
+            text = value,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -395,48 +376,7 @@ private fun HintBox(text: String) {
             )
             .padding(12.dp)
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun ChipRow(
-    items: List<Int>,
-    selected: Int,
-    label: (Int) -> String,
-    onSelect: (Int) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items.forEach { v ->
-            val isSelected = v == selected
-            Box(
-                modifier = Modifier
-                    .clickable { onSelect(v) }
-                    .background(
-                        color = if (isSelected)
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(999.dp)
-                    )
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                Text(
-                    text = label(v),
-                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+        Text(text, style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -466,7 +406,9 @@ private fun LocationPickRow(
             Text(
                 text = name,
                 modifier = Modifier.weight(1f),
-                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             if (isSelected) {
                 Text(
@@ -479,6 +421,40 @@ private fun LocationPickRow(
     }
 }
 
+@Composable
+private fun FrequencyChips(
+    selected: AlertFrequency,
+    onPick: (AlertFrequency) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            FreqChip(AlertFrequency.DAILY, selected, onPick, Modifier.weight(1f))
+            FreqChip(AlertFrequency.HOURLY, selected, onPick, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            FreqChip(AlertFrequency.SIX_HOURLY, selected, onPick, Modifier.weight(1f))
+            FreqChip(AlertFrequency.FIFTEEN_MIN, selected, onPick, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun FreqChip(
+    freq: AlertFrequency,
+    selected: AlertFrequency,
+    onPick: (AlertFrequency) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isSelected = freq == selected
+    OutlinedButton(
+        onClick = { onPick(freq) },
+        modifier = modifier,
+        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
+    ) {
+        Text(freq.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
 private fun approxEqual(a: Double, b: Double): Boolean = abs(a - b) < 0.00001
 
 private fun loadSavedLocationsForUser(context: Context): List<SavedLocation> {
@@ -488,19 +464,15 @@ private fun loadSavedLocationsForUser(context: Context): List<SavedLocation> {
     val uid = helper.getCurrentUser()?.uid
     val email = helper.getCurrentUserEmail()
 
-    // Try multiple keys because different parts of the app might save under different user keys
     val possibleKeys = buildList {
         if (!uid.isNullOrBlank()) add("saved_locations_$uid")
         if (!email.isNullOrBlank()) add("saved_locations_$email")
         add("saved_locations_guest")
-
-        // Common fallback/legacy keys (in case your HomePage used these)
         add("saved_locations")
         add("savedLocations")
         add("locations")
     }
 
-    // Try each key until we find a valid list
     for (key in possibleKeys) {
         val raw = prefs.getString(key, null) ?: continue
         val parsed = parseSavedLocationsJson(raw)
@@ -522,7 +494,6 @@ private fun parseSavedLocationsJson(raw: String): List<SavedLocation> {
                     .ifBlank { o.optString("label") }
                     .ifBlank { "Saved place" }
 
-                // Support multiple field naming conventions
                 val lat = when {
                     o.has("lat") -> o.optDouble("lat", Double.NaN)
                     o.has("latitude") -> o.optDouble("latitude", Double.NaN)
@@ -543,4 +514,3 @@ private fun parseSavedLocationsJson(raw: String): List<SavedLocation> {
         }
     }.getOrDefault(emptyList())
 }
-

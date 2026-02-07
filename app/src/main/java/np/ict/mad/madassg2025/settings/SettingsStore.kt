@@ -21,8 +21,8 @@ class SettingsStore(private val context: Context) {
     private val KEY_DEFAULT_LAT = doublePreferencesKey("default_loc_lat")
     private val KEY_DEFAULT_LON = doublePreferencesKey("default_loc_lon")
 
-    private val KEY_ALERT_HOUR = stringPreferencesKey("alert_hour")     // "0".."23"
-    private val KEY_ALERT_MIN = stringPreferencesKey("alert_minute")    // "0".."59"
+    // NEW: frequency-based alerts (replaces hour/min scheduling)
+    private val KEY_ALERT_FREQUENCY = stringPreferencesKey("alert_frequency")
 
     val unitsFlow: Flow<String> = context.dataStore.data.map { it[KEY_UNITS] ?: "C" }
     val rainAlertsFlow: Flow<Boolean> = context.dataStore.data.map { it[KEY_RAIN_ALERTS] ?: false }
@@ -31,13 +31,13 @@ class SettingsStore(private val context: Context) {
     val defaultLatFlow: Flow<Double> = context.dataStore.data.map { it[KEY_DEFAULT_LAT] ?: Double.NaN }
     val defaultLonFlow: Flow<Double> = context.dataStore.data.map { it[KEY_DEFAULT_LON] ?: Double.NaN }
 
-    val alertHourFlow: Flow<Int> = context.dataStore.data.map { (it[KEY_ALERT_HOUR] ?: "8").toInt() }
-    val alertMinuteFlow: Flow<Int> = context.dataStore.data.map { (it[KEY_ALERT_MIN] ?: "0").toInt() }
+    val alertFrequencyFlow: Flow<String> =
+        context.dataStore.data.map { it[KEY_ALERT_FREQUENCY] ?: AlertFrequency.DAILY.name }
 
     suspend fun setUnits(value: String) {
         context.dataStore.edit { it[KEY_UNITS] = value }
 
-        // Mirror to existing prefs so your current UI stays compatible
+        // Mirror to existing prefs so your current Home UI stays compatible
         val legacy = context.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
         legacy.edit().putString("unit_pref", value).apply()
     }
@@ -54,18 +54,13 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    suspend fun setAlertTime(hour: Int, minute: Int) {
-        context.dataStore.edit {
-            it[KEY_ALERT_HOUR] = hour.coerceIn(0, 23).toString()
-            it[KEY_ALERT_MIN] = minute.coerceIn(0, 59).toString()
-        }
+    suspend fun setAlertFrequency(freq: AlertFrequency) {
+        context.dataStore.edit { it[KEY_ALERT_FREQUENCY] = freq.name }
     }
 
-    suspend fun getAlertTime(): Pair<Int, Int> {
+    suspend fun getAlertFrequency(): AlertFrequency {
         val data = context.dataStore.data.first()
-        val h = (data[KEY_ALERT_HOUR] ?: "8").toInt()
-        val m = (data[KEY_ALERT_MIN] ?: "0").toInt()
-        return h to m
+        return AlertFrequency.fromStored(data[KEY_ALERT_FREQUENCY])
     }
 
     suspend fun getDefaultLocation(): DefaultLocation? {

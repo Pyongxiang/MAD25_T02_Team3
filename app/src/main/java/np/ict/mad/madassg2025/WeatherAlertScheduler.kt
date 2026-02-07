@@ -2,48 +2,35 @@ package np.ict.mad.madassg2025
 
 import android.content.Context
 import androidx.work.Constraints
-import androidx.work.ExistingWorkPolicy
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
+import np.ict.mad.madassg2025.settings.AlertFrequency
 
 object WeatherAlertScheduler {
-    private const val WORK_NAME = "weather_alerts_daily"
+    private const val WORK_NAME = "weather_alerts_periodic"
 
-    fun scheduleDailyAt(context: Context, hour: Int, minute: Int) {
-        val delayMs = computeDelayMs(hour, minute)
-
+    fun schedule(context: Context, freq: AlertFrequency) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        val req = OneTimeWorkRequestBuilder<WeatherAlertWorker>()
+        val req = PeriodicWorkRequestBuilder<WeatherAlertWorker>(
+            freq.repeatInterval,
+            freq.repeatUnit
+        )
             .setConstraints(constraints)
-            .setInitialDelay(delayMs, TimeUnit.MILLISECONDS)
             .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             WORK_NAME,
-            ExistingWorkPolicy.REPLACE,
+            ExistingPeriodicWorkPolicy.UPDATE,
             req
         )
     }
 
     fun cancel(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
-    }
-
-    private fun computeDelayMs(hour: Int, minute: Int): Long {
-        val now = Calendar.getInstance()
-        val next = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (before(now)) add(Calendar.DAY_OF_YEAR, 1)
-        }
-        return next.timeInMillis - now.timeInMillis
     }
 }
