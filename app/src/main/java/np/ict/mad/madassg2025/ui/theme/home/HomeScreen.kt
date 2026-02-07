@@ -226,7 +226,7 @@ fun HomeScreen(
                             shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
                         ) {
-                            Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = loc.name,
@@ -251,7 +251,7 @@ fun HomeScreen(
                                     )
                                 }
 
-                                Spacer(Modifier.width(12.dp))
+                                Spacer(Modifier.width(8.dp))
 
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(pickWeatherEmojiById(mini?.weatherId), style = MaterialTheme.typography.titleLarge)
