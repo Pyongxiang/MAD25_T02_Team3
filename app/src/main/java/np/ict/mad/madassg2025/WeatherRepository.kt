@@ -23,6 +23,17 @@ object WeatherRepository {
     private const val BASE_URL = "https://api.openweathermap.org/"
     private const val NOMINATIM_BASE = "https://nominatim.openstreetmap.org/reverse"
     private const val OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+    private const val NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
+
+    // Singapore bounding box (roughly covers SG)
+    private const val SG_LEFT = 103.60
+    private const val SG_TOP = 1.48
+    private const val SG_RIGHT = 104.10
+    private const val SG_BOTTOM = 1.16
+
+    private const val SG_CENTER_LAT = 1.3521
+    private const val SG_CENTER_LON = 103.8198
+    private const val SG_RADIUS_M = 25000 // 25km covers Singapore island
 
     // 🔑 Replace with your real key or BuildConfig value
     private const val OPEN_WEATHER_API_KEY = "e25a0c31ecc92cc51c1c7548568af374"
@@ -50,7 +61,7 @@ object WeatherRepository {
         retrofit.create(WeatherApiService::class.java)
     }
 
-    // ✅ OpenWeather Geocoding API (direct + reverse)
+    // OpenWeather Geocoding API (direct + reverse)
     private val geocodingApi: OpenWeatherGeocodingService by lazy {
         retrofit.create(OpenWeatherGeocodingService::class.java)
     }
@@ -69,26 +80,176 @@ object WeatherRepository {
             }
         }
 
-    // ✅ Search places (forward geocode)
+    /**
+     * Search places (forward geocode)
+     *
+     * Strategy:
+     * 1) Try OpenWeather direct geocoding (fast + typed via Retrofit), biased to Singapore.
+     * 2) If results are weak, use OpenStreetMap sources:
+     *    - Nominatim search (bounded to SG) for better textual place matching
+     *    - Overpass POI search for specific venues (e.g., polytechnics/schools)
+     */
     suspend fun searchPlaces(query: String, limit: Int = 5): List<DirectGeoResult> =
         withContext(Dispatchers.IO) {
-            try {
+
+            val q = query.trim()
+            if (q.isBlank()) return@withContext emptyList()
+
+            fun distinctByCoords(items: List<DirectGeoResult>): List<DirectGeoResult> =
+                items.distinctBy { "${it.lat ?: 0.0},${it.lon ?: 0.0},${it.name ?: ""}" }
+
+            // 1) OpenWeather direct geocoding (bias to Singapore)
+            val owResults: List<DirectGeoResult> = try {
+                val biasedQ =
+                    if (q.contains("singapore", ignoreCase = true)) q else "$q, Singapore"
                 geocodingApi.directGeocode(
-                    query = query,
+                    query = biasedQ,
                     limit = limit,
                     apiKey = OPEN_WEATHER_API_KEY
                 )
             } catch (_: Exception) {
                 emptyList()
             }
+
+            val owSG = owResults.filter { it.country?.equals("SG", ignoreCase = true) == true }
+            val owNonSG = owResults.filterNot { it.country?.equals("SG", ignoreCase = true) == true }
+            val owOrdered = distinctByCoords(owSG + owNonSG).take(limit)
+
+            if (owOrdered.size >= limit) return@withContext owOrdered
+
+            // 2) Nominatim bounded search (Singapore)
+            val nominatim = try {
+                nominatimSearchSingapore(q, limit)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // 3) Overpass POI search (Singapore)
+            val overpass = try {
+                overpassSearchSingaporePOI(q, limit)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            distinctByCoords(owOrdered + nominatim + overpass).take(limit)
         }
+
+    private fun nominatimSearchSingapore(query: String, limit: Int): List<DirectGeoResult> {
+        val url = buildString {
+            append(NOMINATIM_SEARCH)
+            append("?format=jsonv2")
+            append("&q=").append(URLEncoder.encode(query, "UTF-8"))
+            append("&addressdetails=1")
+            append("&limit=").append(limit)
+            // Bias to Singapore only
+            append("&countrycodes=sg")
+            // Keep results inside SG bounding box
+            append("&bounded=1")
+            append("&viewbox=")
+            append(SG_LEFT).append(",").append(SG_TOP).append(",")
+            append(SG_RIGHT).append(",").append(SG_BOTTOM)
+            append("&accept-language=en")
+        }
+
+        val req = Request.Builder()
+            .url(url)
+            .header("User-Agent", "MADAssg2025/1.0 (student project)")
+            .build()
+
+        okHttp.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return emptyList()
+
+            val bodyStr = resp.body()?.string().orEmpty()
+            val arr = org.json.JSONArray(bodyStr)
+
+            val out = mutableListOf<DirectGeoResult>()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val displayName = obj.optString("display_name").trim()
+                val lat = obj.optString("lat").toDoubleOrNull()
+                val lon = obj.optString("lon").toDoubleOrNull()
+
+                val address = obj.optJSONObject("address")
+                val state = address?.optString("state")?.takeIf { it.isNotBlank() }
+                val countryCode = address?.optString("country_code")?.uppercase(Locale.ROOT)
+
+                if (displayName.isNotBlank() && lat != null && lon != null) {
+                    out += DirectGeoResult(
+                        name = displayName,
+                        local_names = null,
+                        lat = lat,
+                        lon = lon,
+                        country = countryCode ?: "SG",
+                        state = state
+                    )
+                }
+            }
+            return out
+        }
+    }
+
+    private fun overpassSearchSingaporePOI(query: String, limit: Int): List<DirectGeoResult> {
+        val safe = query.replace("\"", "\\\"")
+        val overpassQuery = """
+            [out:json][timeout:25];
+            (
+              node(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="university"];
+              node(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="college"];
+              node(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="school"];
+              way(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="university"];
+              way(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="college"];
+              way(around:$SG_RADIUS_M,$SG_CENTER_LAT,$SG_CENTER_LON)["name"~"$safe",i]["amenity"="school"];
+            );
+            out center;
+        """.trimIndent()
+
+        val body = RequestBody.create(
+            MediaType.parse("application/x-www-form-urlencoded"),
+            "data=" + URLEncoder.encode(overpassQuery, "UTF-8")
+        )
+
+        val req = Request.Builder()
+            .url(OVERPASS_URL)
+            .post(body)
+            .header("User-Agent", "MADAssg2025/1.0 (student project)")
+            .build()
+
+        okHttp.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return emptyList()
+
+            val json = JSONObject(resp.body()?.string().orEmpty())
+            val elements = json.optJSONArray("elements") ?: return emptyList()
+
+            val out = mutableListOf<DirectGeoResult>()
+            for (i in 0 until elements.length()) {
+                val el = elements.getJSONObject(i)
+                val tags = el.optJSONObject("tags")
+                val name = tags?.optString("name")?.trim().orEmpty()
+                if (name.isBlank()) continue
+
+                val lat = if (el.has("lat")) el.optDouble("lat", Double.NaN) else Double.NaN
+                val lon = if (el.has("lon")) el.optDouble("lon", Double.NaN) else Double.NaN
+                val center = el.optJSONObject("center")
+
+                val finalLat = if (!lat.isNaN()) lat else center?.optDouble("lat", Double.NaN) ?: Double.NaN
+                val finalLon = if (!lon.isNaN()) lon else center?.optDouble("lon", Double.NaN) ?: Double.NaN
+                if (finalLat.isNaN() || finalLon.isNaN()) continue
+
+                out += DirectGeoResult(
+                    name = name,
+                    local_names = null,
+                    lat = finalLat,
+                    lon = finalLon,
+                    country = "SG",
+                    state = null
+                )
+            }
+            return out.take(limit)
+        }
+    }
 
     /**
      * Reverse geocode using Nominatim + Overpass heuristic
-     *
-     * ✅ Updated:
-     * - Avoid returning "small tenants" (restaurants/shops) as the main label,
-     *   even if Overpass finds them closest.
      */
     suspend fun getPlaceName(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
@@ -110,56 +271,38 @@ object WeatherRepository {
             okHttp.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@withContext null
 
-                // ✅ OkHttp 3.x: use resp.body() not resp.body
-                val bodyStr = resp.body()?.string() ?: return@withContext null
+                val obj = JSONObject(resp.body()?.string().orEmpty())
+                val address = obj.optJSONObject("address")
+                val displayName = obj.optString("display_name").orEmpty()
 
-                val json = JSONObject(bodyStr)
-                val address = json.optJSONObject("address")
-                val displayName = json.optString("display_name", "")
+                val poiName = listOf(
+                    address?.optString("attraction"),
+                    address?.optString("tourism"),
+                    address?.optString("leisure"),
+                    address?.optString("amenity"),
+                    address?.optString("shop"),
+                    address?.optString("building"),
+                    address?.optString("name")
+                ).firstOrNull { !it.isNullOrBlank() }?.trim()
 
-                val attraction = address?.optString("attraction") ?: ""
-                val amenity = address?.optString("amenity") ?: ""
-                val tourism = address?.optString("tourism") ?: ""
-                val shop = address?.optString("shop") ?: ""
-                val building = address?.optString("building") ?: ""
-                val leisure = address?.optString("leisure") ?: ""
-                val historic = address?.optString("historic") ?: ""
-
-                val poiName = when {
-                    attraction.isNotBlank() -> attraction
-                    tourism.isNotBlank() -> tourism
-                    leisure.isNotBlank() -> leisure
-                    historic.isNotBlank() -> historic
-                    amenity.isNotBlank() -> amenity
-                    shop.isNotBlank() -> shop
-                    building.isNotBlank() -> building
-                    else -> null
-                }
-
-                val looksSmallTenantPoi = poiName?.let { isLikelySmallTenant(it, address) } ?: false
-
-                // Overpass: try to find a nearby "bigger venue"
-                val venueName = getNearestBigVenueName(lat, lon)
-
-                // ✅ NEW: also reject venueName if it's likely a small tenant (e.g., Sushi Tei)
-                val looksSmallTenantVenue =
-                    venueName?.let { isLikelySmallTenant(it, address) } ?: false
+                val venueName = getNearestBigVenueName(lat, lon)?.trim()
 
                 val label = when {
-                    !venueName.isNullOrBlank() && !looksSmallTenantVenue -> venueName
-                    !poiName.isNullOrBlank() && !looksSmallTenantPoi -> poiName
+                    !venueName.isNullOrBlank() && !isLikelySmallTenant(venueName, address) -> venueName
+                    !poiName.isNullOrBlank() && !isLikelySmallTenant(poiName, address) -> poiName
                     else -> buildAreaLabel(address, displayName)
-                }?.takeIf { !isBadLabel(it) }
+                }?.trim()
+
+                if (label.isNullOrBlank()) return@withContext null
+                if (isBadLabel(label)) return@withContext buildAreaLabel(address, displayName)
 
                 return@withContext label
             }
         }
 
-    // ----------------- helpers -----------------
-
     private fun getNearestBigVenueName(lat: Double, lon: Double): String? {
         val q = """
-            [out:json][timeout:10];
+            [out:json][timeout:25];
             (
               node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["amenity"];
               node(around:$VENUE_RADIUS_M,$lat,$lon)["name"]["tourism"];
@@ -177,8 +320,10 @@ object WeatherRepository {
             out center;
         """.trimIndent()
 
-        val mediaType = MediaType.parse("application/x-www-form-urlencoded")
-        val body = RequestBody.create(mediaType, "data=" + URLEncoder.encode(q, "UTF-8"))
+        val body = RequestBody.create(
+            MediaType.parse("application/x-www-form-urlencoded"),
+            "data=" + URLEncoder.encode(q, "UTF-8")
+        )
 
         val req = Request.Builder()
             .url(OVERPASS_URL)
@@ -186,139 +331,116 @@ object WeatherRepository {
             .header("User-Agent", "MADAssg2025/1.0 (student project)")
             .build()
 
-        return try {
-            okHttp.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return null
+        okHttp.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) return null
 
-                // ✅ OkHttp 3.x: use resp.body()
-                val bodyStr = resp.body()?.string() ?: return null
-                val json = JSONObject(bodyStr)
-                val elements = json.optJSONArray("elements") ?: return null
+            val json = JSONObject(resp.body()?.string().orEmpty())
+            val elements = json.optJSONArray("elements") ?: return null
 
-                var bestName: String? = null
-                var bestDist = Double.MAX_VALUE
+            var bestName: String? = null
+            var bestDist = Double.MAX_VALUE
 
-                for (i in 0 until elements.length()) {
-                    val el = elements.getJSONObject(i)
-                    val tags = el.optJSONObject("tags") ?: continue
-                    val n = tags.optString("name", "").trim()
-                    if (n.isBlank()) continue
+            for (i in 0 until elements.length()) {
+                val el = elements.getJSONObject(i)
+                val tags = el.optJSONObject("tags") ?: continue
+                val name = tags.optString("name").orEmpty().trim()
+                if (name.isBlank()) continue
 
-                    // ✅ NEW: reject obvious small POIs (restaurants/shops/etc) even if close
-                    if (isLikelySmallVenue(tags, n)) continue
+                if (isLikelySmallVenue(tags, name)) continue
 
-                    val eLat = when {
-                        el.has("lat") -> el.optDouble("lat")
-                        el.optJSONObject("center") != null -> el.optJSONObject("center")!!.optDouble("lat")
-                        else -> Double.NaN
-                    }
-                    val eLon = when {
-                        el.has("lon") -> el.optDouble("lon")
-                        el.optJSONObject("center") != null -> el.optJSONObject("center")!!.optDouble("lon")
-                        else -> Double.NaN
-                    }
-                    if (eLat.isNaN() || eLon.isNaN()) continue
-
-                    val d = haversineMeters(lat, lon, eLat, eLon)
-                    if (d < bestDist && d <= MAX_VENUE_DISTANCE_M) {
-                        bestDist = d
-                        bestName = n
-                    }
+                val elLat: Double? = when {
+                    el.has("lat") -> el.optDouble("lat", Double.NaN).takeIf { !it.isNaN() }
+                    el.optJSONObject("center") != null ->
+                        el.optJSONObject("center")!!.optDouble("lat", Double.NaN).takeIf { !it.isNaN() }
+                    else -> null
                 }
 
-                bestName
+                val elLon: Double? = when {
+                    el.has("lon") -> el.optDouble("lon", Double.NaN).takeIf { !it.isNaN() }
+                    el.optJSONObject("center") != null ->
+                        el.optJSONObject("center")!!.optDouble("lon", Double.NaN).takeIf { !it.isNaN() }
+                    else -> null
+                }
+
+                if (elLat == null || elLon == null) continue
+
+                val d = haversineMeters(lat, lon, elLat, elLon)
+                if (d < bestDist && d <= MAX_VENUE_DISTANCE_M) {
+                    bestDist = d
+                    bestName = name
+                }
             }
-        } catch (_: Exception) {
-            null
+
+            return bestName
         }
     }
 
-    /**
-     * Heuristic filter for Overpass candidates.
-     * Tries to avoid picking small businesses as "the place".
-     */
     private fun isLikelySmallVenue(tags: JSONObject, name: String): Boolean {
-        val amenity = tags.optString("amenity", "").lowercase(Locale.getDefault())
-        val shop = tags.optString("shop", "").lowercase(Locale.getDefault())
-        val tourism = tags.optString("tourism", "").lowercase(Locale.getDefault())
+        val amenity = tags.optString("amenity").lowercase(Locale.ROOT)
+        val shop = tags.optString("shop").lowercase(Locale.ROOT)
+        val tourism = tags.optString("tourism").lowercase(Locale.ROOT)
 
-        // If it is a shop, very likely not what we want as a main label.
         if (shop.isNotBlank()) return true
 
-        // Tourism "attraction" can be valid; "hotel" etc tends to be less helpful as a general label.
-        val tourismBad = setOf("hotel", "guest_house", "hostel", "motel", "apartment")
-        if (tourism.isNotBlank() && tourism in tourismBad) return true
-
-        // Common small amenities we want to avoid.
-        val smallAmenity = setOf(
-            "restaurant", "cafe", "fast_food", "bar", "pub",
-            "clinic", "dentist", "pharmacy",
-            "bank", "atm",
-            "convenience", "kiosk", "marketplace",
-            "beauty", "hairdresser"
+        val smallAmenities = setOf(
+            "restaurant", "cafe", "fast_food", "bar", "pub", "bakery",
+            "clinic", "doctors", "dentist", "pharmacy",
+            "convenience", "supermarket", "hairdresser", "beauty"
         )
-        if (amenity.isNotBlank() && amenity in smallAmenity) return true
+        if (amenity in smallAmenities) return true
 
-        // Name-based backup (same idea as isLikelySmallTenant)
-        return isLikelySmallTenant(name, address = null)
+        val smallTourism = setOf("hotel", "hostel", "guest_house")
+        if (tourism in smallTourism) return true
+
+        return isLikelySmallTenant(name, tags.optJSONObject("address"))
     }
 
     private fun buildAreaLabel(address: JSONObject?, displayName: String): String? {
-        if (address == null) {
-            return displayName.takeIf { it.isNotBlank() }
-                ?.split(",")
-                ?.firstOrNull()
-                ?.trim()
-        }
-
-        val neighbourhood = address.optString("neighbourhood", "")
-        val suburb = address.optString("suburb", "")
-        val cityDistrict = address.optString("city_district", "")
-        val town = address.optString("town", "")
-        val city = address.optString("city", "")
-        val county = address.optString("county", "")
-
-        val candidates = listOf(neighbourhood, suburb, cityDistrict, town, city, county)
-            .map { it.trim() }
-            .filter { it.isNotBlank() && !isBadLabel(it) }
+        val candidates = listOf(
+            address?.optString("neighbourhood"),
+            address?.optString("suburb"),
+            address?.optString("quarter"),
+            address?.optString("city_district"),
+            address?.optString("city"),
+            address?.optString("town"),
+            address?.optString("village"),
+            address?.optString("state")
+        ).filterNotNull().map { it.trim() }.filter { it.isNotBlank() }
 
         return candidates.firstOrNull()
-            ?: displayName.takeIf { it.isNotBlank() }?.split(",")?.firstOrNull()?.trim()
+            ?: displayName.split(",").firstOrNull()?.trim()
     }
 
     private fun haversineMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-        val a = sin(dLat / 2).pow(2.0) +
-                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) *
-                sin(dLon / 2).pow(2.0)
-
+        val a = sin(dLat / 2).pow(2) +
+                cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
         return r * c
     }
 
     private fun looksLikeBlock(s: String): Boolean {
-        val t = s.lowercase(Locale.getDefault())
-        return t.startsWith("block") || t.startsWith("blk")
+        val t = s.lowercase(Locale.ROOT)
+        return t.startsWith("blk ") || t.startsWith("block ") || Regex("""\bblk\b""").containsMatchIn(t)
     }
 
     private fun isBadLabel(s: String): Boolean =
         s.isBlank() || s.all { it.isDigit() } || looksLikeBlock(s)
 
     private fun isLikelySmallTenant(poi: String, address: JSONObject?): Boolean {
-        val n = poi.lowercase(Locale.getDefault())
+        val p = poi.lowercase(Locale.ROOT)
         val badWords = listOf(
-            "sushi", "tea", "coffee", "bistro", "restaurant", "cafe", "bubble", "koi",
-            "starbucks", "mcdonald", "subway", "bakery", "clinic", "pharmacy", "salon",
-            "barber", "7-eleven", "minimart", "mart", "store", "shop", "tuition", "centre",
-            "center", "laundry"
+            "coffee", "cafe", "restaurant", "sushi", "noodle", "bakery", "bar", "pub",
+            "clinic", "pharmacy", "dentist", "salon", "hair", "beauty",
+            "mart", "mini mart", "convenience", "supermarket", "shop"
         )
-        if (badWords.any { n.contains(it) }) return true
+        if (badWords.any { p.contains(it) }) return true
 
-        val road = address?.optString("road", "") ?: ""
-        val house = address?.optString("house_number", "") ?: ""
-        if (house.isNotBlank() && road.isNotBlank()) return true
+        val houseNum = address?.optString("house_number")?.trim().orEmpty()
+        val road = address?.optString("road")?.trim().orEmpty()
+        if (houseNum.isNotBlank() && road.isNotBlank()) return true
 
         return false
     }

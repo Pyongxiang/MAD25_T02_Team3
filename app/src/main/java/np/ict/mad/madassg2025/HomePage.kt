@@ -31,6 +31,7 @@ import np.ict.mad.madassg2025.ui.home.computeSkyMode
 import np.ict.mad.madassg2025.ui.home.favKey
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlinx.coroutines.CancellationException
 
 class HomePage : ComponentActivity() {
 
@@ -206,26 +207,43 @@ class HomePage : ComponentActivity() {
             searchError = null
         )
 
-        // clear immediately if blank
-        if (q.isBlank()) {
+        val trimmed = q.trim()
+
+        if (trimmed.isBlank()) {
             searchJob?.cancel()
-            uiState = uiState.copy(searchLoading = false, searchResults = emptyList(), searchError = null)
+            uiState = uiState.copy(
+                searchLoading = false,
+                searchResults = emptyList(),
+                searchError = null
+            )
+            return
+        }
+
+        if (trimmed.length < 3) {
+            searchJob?.cancel()
+            uiState = uiState.copy(
+                searchLoading = false,
+                searchResults = emptyList(),
+                searchError = null
+            )
             return
         }
 
         searchJob?.cancel()
         searchJob = lifecycleScope.launch {
-            delay(350) // debounce
+            delay(400)
+
             uiState = uiState.copy(searchLoading = true, searchError = null)
 
             try {
-                val results = WeatherRepository.searchPlaces(q.trim(), limit = 6)
+                val results = WeatherRepository.searchPlaces(trimmed, limit = 6)
 
                 val mapped = results.mapNotNull { r ->
                     val name = r.name?.trim().orEmpty()
                     val lat = r.lat
                     val lon = r.lon
                     if (name.isBlank() || lat == null || lon == null) return@mapNotNull null
+
                     PlaceSuggestion(
                         name = name,
                         state = r.state,
@@ -240,11 +258,13 @@ class HomePage : ComponentActivity() {
                     searchResults = mapped.take(6),
                     searchError = null
                 )
-            } catch (e: Exception) {
+            } catch (_: CancellationException) {
+                // normal: user typed again, previous search cancelled
+            } catch (_: Exception) {
                 uiState = uiState.copy(
                     searchLoading = false,
                     searchResults = emptyList(),
-                    searchError = e.message ?: "Search failed"
+                    searchError = "Search failed. Please try again."
                 )
             }
         }
