@@ -1,5 +1,6 @@
-package np.ict.mad.madassg2025
+package np.ict.mad.madassg2025.forecast
 
+import np.ict.mad.madassg2025.WeatherForecast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

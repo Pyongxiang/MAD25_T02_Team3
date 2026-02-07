@@ -1,4 +1,4 @@
-package np.ict.mad.madassg2025
+package np.ict.mad.madassg2025.forecast
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity

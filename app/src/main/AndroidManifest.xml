@@ -37,7 +37,7 @@
 
         <!-- ✅ Forecast screen (THIS FIXES YOUR CRASH) -->
         <activity
-            android:name="np.ict.mad.madassg2025.ForecastActivity"
+            android:name="np.ict.mad.madassg2025.forecast.ForecastActivity"
             android:exported="false" />
 
         <activity android:name=".LocationsActivity" />

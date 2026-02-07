@@ -32,6 +32,7 @@ import np.ict.mad.madassg2025.ui.home.favKey
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
+import np.ict.mad.madassg2025.forecast.ForecastActivity
 
 class HomePage : ComponentActivity() {
 

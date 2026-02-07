@@ -1,4 +1,4 @@
-package np.ict.mad.madassg2025
+package np.ict.mad.madassg2025.forecast
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import np.ict.mad.madassg2025.WeatherForecast
 import kotlin.math.max
 import kotlin.math.roundToInt
 

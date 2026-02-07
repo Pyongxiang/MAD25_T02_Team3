@@ -1,4 +1,4 @@
-package np.ict.mad.madassg2025
+package np.ict.mad.madassg2025.forecast
 
 import android.content.Intent // Google Maps Imports
 import androidx.compose.material.icons.Icons
@@ -35,6 +35,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import np.ict.mad.madassg2025.MapSearchActivity
+import np.ict.mad.madassg2025.SunPathCard
+import np.ict.mad.madassg2025.WeatherForecast
+import np.ict.mad.madassg2025.WeatherRepository
+import kotlin.math.max
 
 @Composable
 fun ForecastScreen(
@@ -157,7 +162,7 @@ fun ForecastScreen(
                         )
 
                         val hourly = r.hourlyNext24
-                        val safeIndex = selectedHourIndex.coerceIn(0, kotlin.math.max(0, hourly.size - 1))
+                        val safeIndex = selectedHourIndex.coerceIn(0, max(0, hourly.size - 1))
                         val selected = hourly.getOrNull(safeIndex)
 
                         FrostCard {
