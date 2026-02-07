@@ -12,10 +12,12 @@ fun createWeatherChannel(context: Context) {
         val channel = NotificationChannel(
             WEATHER_CHANNEL_ID,
             "Weather alerts",
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Notifications for rain reminders"
+            enableVibration(true)
         }
+
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(channel)
     }

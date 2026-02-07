@@ -39,13 +39,19 @@ class WeatherAlertWorker(
             sendRainNotification(context, def.name)
         }
 
-        // IMPORTANT: We do NOT reschedule inside the worker anymore.
-        // Scheduling is handled by PeriodicWorkRequest in WeatherAlertScheduler.
-
         return Result.success()
     }
 
     private fun sendRainNotification(context: Context, locationName: String) {
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val granted = context.checkSelfPermission(
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (!granted) return
+        }
+
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }

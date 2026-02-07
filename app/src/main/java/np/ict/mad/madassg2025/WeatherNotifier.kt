@@ -27,18 +27,29 @@ object WeatherNotifier {
         }
     }
 
-        fun showTestAlert(context: Context, locationName: String) {
+    // Generic helper (new)
+    fun showTestAlert(context: Context, title: String, message: String) {
         ensureChannel(context)
 
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher) // use a guaranteed icon
-            .setContentTitle("Test weather alert")
-            .setContentText("Notifications are working! (Default: $locationName)")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL) // sound + vibration + lights
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setAutoCancel(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(2001, notif)
+    }
+
+    // Backwards compatible (old signature)
+    fun showTestAlert(context: Context, locationName: String) {
+        showTestAlert(
+            context = context,
+            title = "Test weather alert",
+            message = "Notifications are working! (Default: $locationName)"
+        )
     }
 }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -50,14 +52,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.launch
+import np.ict.mad.madassg2025.alerts.WeatherNotifier
 import np.ict.mad.madassg2025.settings.AlertFrequency
 import np.ict.mad.madassg2025.settings.SettingsStore
 import np.ict.mad.madassg2025.ui.home.SavedLocation
 import org.json.JSONArray
 import kotlin.math.abs
-import np.ict.mad.madassg2025.alerts.WeatherNotifier
-import androidx.compose.foundation.layout.widthIn
 
 class SettingsActivity : ComponentActivity() {
 
@@ -121,6 +123,19 @@ private fun SettingsScreen(
                 val f = store.getAlertFrequency()
                 WeatherAlertScheduler.schedule(context, f)
             }
+        }
+    }
+
+    fun canPostNotificationsNow(): Boolean {
+        // If user disabled notifications for the app, no popup will ever show.
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
+
+        // Android 13+ requires POST_NOTIFICATIONS permission.
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+        } else {
+            true
         }
     }
 
@@ -269,7 +284,9 @@ private fun SettingsScreen(
                         Divider()
                         Spacer(Modifier.height(14.dp))
 
-                        // Enable alerts toggle
+                        // FIXED LAYOUT:
+                        // - Row only contains text + switch (prevents the vertical-letters bug).
+                        // - Test button is moved BELOW the Row.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -281,16 +298,6 @@ private fun SettingsScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                            }
-
-                            Button(
-                                onClick = {
-                                    val name = if (defaultName.isBlank()) "Not set" else defaultName
-                                    WeatherNotifier.showTestAlert(context, name)
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Send Test Alert")
                             }
 
                             Switch(
@@ -310,31 +317,90 @@ private fun SettingsScreen(
                             )
                         }
 
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            text = "Note: Android’s reliable minimum interval is 15 minutes.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(Modifier.height(10.dp))
+
+                        Button(
+                            onClick = {
+                                onRequestNotificationPermission()
+
+                                if (!canPostNotificationsNow()) {
+                                    Toast.makeText(
+                                        context,
+                                        "Notifications are blocked. Enable them in App Settings to see the test alert.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@Button
+                                }
+
+                                // Need a default location to fetch weather for
+                                if (defaultLat.isNaN() || defaultLon.isNaN()) {
+                                    Toast.makeText(
+                                        context,
+                                        "Set a default location first.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    return@Button
+                                }
+
+                                val name =
+                                    if (defaultName.isBlank()) "Default location" else defaultName
+
+                                scope.launch {
+                                    val result =
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            WeatherForecast().getHourly24AndDaily5(
+                                                defaultLat,
+                                                defaultLon
+                                            )
+                                        }
+
+                                    if (result == null || result.hourlyNext24.isEmpty()) {
+                                        Toast.makeText(
+                                            context,
+                                            "Could not fetch weather right now.",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+
+                                    val now = result.hourlyNext24.first()
+                                    val msg =
+                                        "$name: ${now.tempC}°C, ${now.description} • POP ${now.popPct}% • Rain ${
+                                            "%.1f".format(
+                                                now.rainMm
+                                            )
+                                        }mm"
+
+                                    np.ict.mad.madassg2025.alerts.WeatherNotifier.showTestAlert(
+                                        context = context,
+                                        title = "Weather now",
+                                        message = msg
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Send Test Alert")
+                        }
+
+                        Spacer(Modifier.height(18.dp))
+
+                        Button(
+                            onClick = { onBack() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Done")
+                        }
+
+                        Spacer(Modifier.height(18.dp))
                     }
                 }
-
-                Spacer(Modifier.height(18.dp))
-
-                Button(
-                    onClick = { onBack() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Done")
-                }
-
-                Spacer(Modifier.height(18.dp))
             }
         }
     }
 }
 
-@Composable
+                        @Composable
 private fun SettingsSectionTitle(text: String) {
     Text(
         text = text,
@@ -347,7 +413,7 @@ private fun SettingsSectionTitle(text: String) {
 
 /**
  * IMPORTANT FIX:
- * - Give the value text its own weight and right-align it.
+ * - Give the value text its own width cap + ellipsis.
  * - This prevents it from being measured in a tiny width (which caused “vertical letters”).
  */
 @Composable
@@ -356,7 +422,6 @@ private fun SettingRow(label: String, value: String, helper: String) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
-        // Left side should take the majority of space
         Column(modifier = Modifier.weight(1f)) {
             Text(label, fontWeight = FontWeight.SemiBold)
             Text(
@@ -368,10 +433,9 @@ private fun SettingRow(label: String, value: String, helper: String) {
 
         Spacer(Modifier.width(12.dp))
 
-        // Right side should NOT get forced tiny; give it a max width and ellipsis
         Text(
             text = value,
-            modifier = Modifier.widthIn(max = 170.dp),   // adjust 150–200 if needed
+            modifier = Modifier.widthIn(max = 170.dp),
             textAlign = TextAlign.End,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
