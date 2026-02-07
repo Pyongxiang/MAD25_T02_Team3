@@ -20,8 +20,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import np.ict.mad.madassg2025.ui.home.HomeActions
-import np.ict.mad.madassg2025.ui.home.HomeScreen
+import np.ict.mad.madassg2025.ui.theme.home.HomeActions
+import np.ict.mad.madassg2025.ui.theme.home.HomeScreen
 import np.ict.mad.madassg2025.ui.home.HomeUiState
 import np.ict.mad.madassg2025.ui.home.MiniWeatherUi
 import np.ict.mad.madassg2025.ui.home.PlaceSuggestion

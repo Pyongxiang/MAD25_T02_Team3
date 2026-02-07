@@ -1,4 +1,4 @@
-package np.ict.mad.madassg2025.ui.home
+package np.ict.mad.madassg2025.ui.theme.home
 
 import android.content.Intent
 import androidx.compose.material.icons.filled.Map
@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,13 +48,17 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
 import kotlin.random.Random
-import androidx.compose.material3.Scaffold
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material3.Icon
+import np.ict.mad.madassg2025.ui.home.HomeUiState
+import np.ict.mad.madassg2025.ui.home.PlaceSuggestion
+import np.ict.mad.madassg2025.ui.home.SavedLocation
+import np.ict.mad.madassg2025.ui.home.SkyMode
+import np.ict.mad.madassg2025.ui.home.UnitPref
 
 data class HomeActions(
     val onToggleUnit: (UnitPref) -> Unit,
@@ -91,8 +96,13 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 20.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                // IMPORTANT: add enough bottom padding so content isn't hidden behind the footer nav bar
+                contentPadding = PaddingValues(
+                    top = 20.dp,
+                    bottom = 140.dp
+                ),
+                // Slightly tighter spacing so the area between sections doesn't feel "empty"
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
                     // Header + unit toggle
@@ -157,7 +167,7 @@ fun HomeScreen(
                                     }
 
                                     Text(
-                                        text = state.condition!!.replaceFirstChar { it.uppercase() },
+                                        text = state.condition.replaceFirstChar { it.uppercase() },
                                         color = Color.White.copy(alpha = 0.85f),
                                         style = MaterialTheme.typography.titleMedium
                                     )
@@ -272,7 +282,9 @@ fun HomeScreen(
 
                 item {
                     Button(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
                         onClick = actions.onUseMyLocation
                     ) {
                         Text("Use My Location")
@@ -418,6 +430,47 @@ private fun TopDetailsAndForecast(
 }
 
 @Composable
+private fun UnitsToggle(unit: UnitPref, onChange: (UnitPref) -> Unit) {
+    Card(
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val isC = unit == UnitPref.C
+            val cAlpha = if (isC) 0.95f else 0.55f
+            val fAlpha = if (!isC) 0.95f else 0.55f
+
+            Text(
+                text = "°C",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onChange(UnitPref.C) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                color = Color.White.copy(alpha = cAlpha),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isC) FontWeight.SemiBold else FontWeight.Medium
+            )
+            Text(
+                text = "°F",
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onChange(UnitPref.F) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                color = Color.White.copy(alpha = fAlpha),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (!isC) FontWeight.SemiBold else FontWeight.Medium
+            )
+        }
+    }
+}
+
+private fun favKey(loc: SavedLocation): String = "${loc.name}|${loc.lat}|${loc.lon}"
+
+@Composable
 private fun SearchSection(
     state: HomeUiState,
     onQueryChange: (String) -> Unit,
@@ -558,67 +611,50 @@ private fun DynamicSkyBackground(modifier: Modifier, mode: SkyMode) {
     val base = when (mode) {
         SkyMode.NIGHT -> Brush.verticalGradient(listOf(Color(0xFF07101E), Color(0xFF0B1730), Color(0xFF0F2240)))
         SkyMode.DAWN -> Brush.verticalGradient(listOf(Color(0xFF0B1530), Color(0xFF2E3A70), Color(0xFF6B5A78)))
-        SkyMode.DAY -> Brush.verticalGradient(listOf(Color(0xFF0B2447), Color(0xFF0E2E5A), Color(0xFF123667)))
-        SkyMode.DUSK -> Brush.verticalGradient(listOf(Color(0xFF0B1530), Color(0xFF2D2A60), Color(0xFF5A3A66)))
+        SkyMode.DAY -> Brush.verticalGradient(listOf(Color(0xFF0C1E3B), Color(0xFF1B3B6F), Color(0xFF2B5EA5)))
+        SkyMode.DUSK -> Brush.verticalGradient(listOf(Color(0xFF0C1630), Color(0xFF2A2D5A), Color(0xFF6B3B6F)))
     }
 
     Box(modifier = modifier.background(base)) {
         if (mode == SkyMode.NIGHT) {
-            val seed = remember { (System.currentTimeMillis() / 1000L).toInt() }
-            val stars = remember(seed) {
-                val rng = Random(seed)
-                List(90) {
-                    Star(
-                        x = rng.nextFloat(),
-                        y = rng.nextFloat() * 0.55f,
-                        r = 1.5f + rng.nextFloat() * 2.6f,
-                        a = 0.25f + rng.nextFloat() * 0.55f
-                    )
-                }
-            }
-
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                stars.forEach { s ->
-                    drawCircle(
-                        color = Color.White.copy(alpha = s.a),
-                        radius = s.r,
-                        center = Offset(size.width * s.x, size.height * s.y)
-                    )
-                }
-            }
+            StarsLayer()
         }
+        MistLayer()
     }
 }
 
-private data class Star(val x: Float, val y: Float, val r: Float, val a: Float)
-
 @Composable
-private fun UnitsToggle(unit: UnitPref, onChange: (UnitPref) -> Unit) {
-    Card(shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.10f))) {
-        Row(
-            modifier = Modifier.padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            UnitChip("°C", unit == UnitPref.C) { onChange(UnitPref.C) }
-            UnitChip("°F", unit == UnitPref.F) { onChange(UnitPref.F) }
+private fun StarsLayer() {
+    val stars = remember {
+        List(80) {
+            Triple(
+                Random.nextFloat(),
+                Random.nextFloat(),
+                Random.nextFloat().coerceIn(0.2f, 1.0f)
+            )
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        stars.forEach { (x, y, a) ->
+            drawCircle(
+                color = Color.White.copy(alpha = a * 0.75f),
+                radius = (a * 1.6f).coerceIn(0.8f, 2.2f),
+                center = Offset(size.width * x, size.height * y)
+            )
         }
     }
 }
 
 @Composable
-private fun UnitChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = if (selected) Color.White.copy(alpha = 0.18f) else Color.Transparent)
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            color = Color.White.copy(alpha = if (selected) 0.95f else 0.75f),
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+private fun MistLayer() {
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRect(
+            brush = Brush.verticalGradient(
+                0f to Color.White.copy(alpha = 0.00f),
+                0.6f to Color.White.copy(alpha = 0.06f),
+                1f to Color.White.copy(alpha = 0.10f)
+            )
         )
     }
 }
