@@ -56,6 +56,8 @@ import np.ict.mad.madassg2025.settings.SettingsStore
 import np.ict.mad.madassg2025.ui.home.SavedLocation
 import org.json.JSONArray
 import kotlin.math.abs
+import np.ict.mad.madassg2025.alerts.WeatherNotifier
+import androidx.compose.foundation.layout.widthIn
 
 class SettingsActivity : ComponentActivity() {
 
@@ -280,6 +282,17 @@ private fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
+
+                            Button(
+                                onClick = {
+                                    val name = if (defaultName.isBlank()) "Not set" else defaultName
+                                    WeatherNotifier.showTestAlert(context, name)
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Send Test Alert")
+                            }
+
                             Switch(
                                 checked = alertsEnabled,
                                 onCheckedChange = { enabled ->
@@ -343,7 +356,8 @@ private fun SettingRow(label: String, value: String, helper: String) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Top
     ) {
-        Column(Modifier.weight(1f)) {
+        // Left side should take the majority of space
+        Column(modifier = Modifier.weight(1f)) {
             Text(label, fontWeight = FontWeight.SemiBold)
             Text(
                 helper,
@@ -354,9 +368,10 @@ private fun SettingRow(label: String, value: String, helper: String) {
 
         Spacer(Modifier.width(12.dp))
 
+        // Right side should NOT get forced tiny; give it a max width and ellipsis
         Text(
             text = value,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.widthIn(max = 170.dp),   // adjust 150–200 if needed
             textAlign = TextAlign.End,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
