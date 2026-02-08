@@ -108,37 +108,30 @@ fun LoginPage() {
 
             if (isLoginMode) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset(x = (-12).dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { rememberMe = !rememberMe }
+                    ) {
                         Checkbox(
                             checked = rememberMe,
                             onCheckedChange = { rememberMe = it }
                         )
-                        Text("Remember Me", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "Remember Me",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.offset(x = (-4).dp)
+                        )
                     }
 
                     TextButton(
-                        onClick = {
-                            if (email.isBlank()) {
-                                errorMessage = "Enter your email to reset the password."
-                                return@TextButton
-                            }
-                            isLoading = true
-                            firebaseHelper.forgotPassword(email,
-                                onSuccess = {
-                                    isLoading = false
-                                    errorMessage = null
-                                    Toast.makeText(context, "Reset email sent!", Toast.LENGTH_SHORT).show()
-                                },
-                                onFailure = { error ->
-                                    isLoading = false
-                                    errorMessage = error
-                                }
-                            )
-                        }
+                        onClick = {},
+                        modifier = Modifier.offset(x = 12.dp)
                     ) {
                         Text("Forgot Password?", style = MaterialTheme.typography.bodySmall)
                     }
