@@ -11,7 +11,7 @@ Developed strictly for **educational purposes only**.
 |------|------------|----------------|
 | Phua Yong Xiang | S10258483F | Pyongxiang |
 | Evan Goh | S10258381G | evangohh |
-| Zhi Heng | _(add)_ | Heng-Github1 |
+| Chang Zhi Heng | S10241579H | Heng-Github1 |
 | Keagan Tan | _(add)_ | GITNumberx |
 
 ---
@@ -53,7 +53,7 @@ Instead of relying solely on generic forecasts, users can view **location-specif
 | Feature | Team Member |
 |--------|------------|
 | Login Page | Phua Yong Xiang |
-| Current Weather Display | Zhi Heng |
+| Current Weather Display | Chang Zhi Heng |
 | “Use My Location” Function | Evan Goh |
 | Forecast Screen | Keagan Tan |
 
@@ -97,7 +97,15 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Designed app icon
 
 ### Zhi Heng
-- 
+- Implemented map-based weather search using Google Maps Compose
+- Enabled users to search locations by place name or postal code and reposition the map
+- Added tap-to-select map interaction to retrieve latitude and longitude
+- Integrated reverse geocoding to convert coordinates into readable place names
+- Connected selected map locations to real-time weather retrieval using OpenWeather API
+- Implemented saving selected locations as favourites to Firebase Firestore
+- Ensured user-specific data storage by saving favourites under authenticated user IDs
+- Handled error states for invalid locations, geocoding failures, and API errors
+- Improved usability by combining visual map selection with weather data feedback
 
 ### Keagan Tan
 - 
