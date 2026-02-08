@@ -100,15 +100,13 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Designed app icon
 
 ### Zhi Heng
-- Implemented map-based weather search using Google Maps Compose
-- Enabled users to search locations by place name or postal code and reposition the map
-- Added tap-to-select map interaction to retrieve latitude and longitude
-- Integrated reverse geocoding to convert coordinates into readable place names
-- Connected selected map locations to real-time weather retrieval using OpenWeather API
-- Implemented saving selected locations as favourites to Firebase Firestore
-- Ensured user-specific data storage by saving favourites under authenticated user IDs
-- Handled error states for invalid locations, geocoding failures, and API errors
-- Improved usability by combining visual map selection with weather data feedback
+- Map-based weather search using Google Maps Compose
+- Location search via place name or postal code
+- Tap-to-select map interaction with reverse geocoding
+- Real-time weather retrieval for selected locations
+- Saving favourite locations to Firestore (user-specific)
+- Error handling for geocoding and API failures
+
 
 ### Keagan Tan
 - 
