@@ -142,9 +142,13 @@ class HomePage : ComponentActivity() {
                         // Navigate to your new ProfileActivity
                         val intent = Intent(this, ProfilePage::class.java)
                         startActivity(intent)
-                    }
+                    },
 
-
+                    onOpenMap = {
+                        // Navigate to Map-Based Weather Search feature
+                        val intent = Intent(this@HomePage, MapSearchActivity::class.java)
+                        startActivity(intent)
+                    },
                 )
             )
         }

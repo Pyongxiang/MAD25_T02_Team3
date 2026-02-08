@@ -1,10 +1,6 @@
 package np.ict.mad.madassg2025.ui.theme.home
 
-import android.content.Intent
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.ui.platform.LocalContext
-import np.ict.mad.madassg2025.MapSearchActivity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -76,6 +72,7 @@ data class HomeActions(
     val onNarrateWeather: () -> Unit,
     val onStopNarration: () -> Unit,
 
+    val onOpenMap: () -> Unit,
     val onOpenFriends: () -> Unit,
     val onOpenChats: () -> Unit,
     val onOpenProfile: () -> Unit
@@ -86,7 +83,6 @@ fun HomeScreen(
     state: HomeUiState,
     actions: HomeActions
 ) {
-    val context = LocalContext.current
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -300,18 +296,6 @@ fun HomeScreen(
                 contentAlignment = Alignment.BottomCenter
             ) {
                 AppFooter(actions)
-            }
-
-            FloatingActionButton(
-                onClick = {
-                    context.startActivity(Intent(context, MapSearchActivity::class.java))
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 20.dp, bottom = 110.dp), // lift above footer
-                containerColor = Color(0xFF6B4BB8)
-            ) {
-                Icon(Icons.Filled.Map, contentDescription = "Open Map")
             }
         }
     }
@@ -683,6 +667,29 @@ private fun AppFooter(actions: HomeActions) {
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
+                // Map
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { actions.onOpenMap() }
+                        .padding(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Map,
+                        contentDescription = "Map",
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Map",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White
+                    )
+                }
+
                 // Friends
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
