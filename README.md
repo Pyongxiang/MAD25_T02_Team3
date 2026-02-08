@@ -121,18 +121,6 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 
 ---
 
-## Screenshots Of User Interface
-
-<img width="381" height="766" alt="Screenshot 2026-02-08 232306" src="https://github.com/user-attachments/assets/b0d95eab-a718-48a3-9500-5a3451ecc61f" />
-<img width="396" height="788" alt="signup png" src="https://github.com/user-attachments/assets/8782a65f-2288-4e76-a5d7-561bf1793582" />
-<img width="783" height="775" alt="friends_search png" src="https://github.com/user-attachments/assets/081a856d-52d5-4303-b0b3-ec9da9d5ea71" />
-<img width="782" height="779" alt="Screenshot 2026-02-08 232152" src="https://github.com/user-attachments/assets/9fb738ce-1e23-4ffa-8e16-6148a1e3fd12" />
-<img width="393" height="780" alt="Screenshot 2026-02-08 232203" src="https://github.com/user-attachments/assets/5ed90dfa-cbe0-463d-bb06-2dd60b1859da" />
-<img width="388" height="770" alt="Screenshot 2026-02-08 232214" src="https://github.com/user-attachments/assets/cf1825e2-c10b-4e25-8d50-ef785c398081" />
-<img width="397" height="778" alt="Screenshot 2026-02-08 232226" src="https://github.com/user-attachments/assets/b9066e33-6b17-4357-bb17-f5b2f872c472" />
-<img width="391" height="774" alt="Screenshot 2026-02-08 232237" src="https://github.com/user-attachments/assets/5ae4b8bc-2268-4045-9ad4-372a4f8a8df8" />
-<img width="403" height="793" alt="Screenshot 2026-02-08 232247" src="https://github.com/user-attachments/assets/0f65e880-8793-4a9a-bba0-33c6fa9abbaa" />
-
 ## System Architecture Diagram
 
 ```mermaid
@@ -153,3 +141,19 @@ flowchart LR
   WM --> Notif["Notification System"]
 
   UI --> TTS["Text-to-Speech"]
+
+---
+
+## Screenshots Of User Interface
+
+<img width="381" height="766" alt="Screenshot 2026-02-08 232306" src="https://github.com/user-attachments/assets/b0d95eab-a718-48a3-9500-5a3451ecc61f" />
+<img width="396" height="788" alt="signup png" src="https://github.com/user-attachments/assets/8782a65f-2288-4e76-a5d7-561bf1793582" />
+<img width="783" height="775" alt="friends_search png" src="https://github.com/user-attachments/assets/081a856d-52d5-4303-b0b3-ec9da9d5ea71" />
+<img width="782" height="779" alt="Screenshot 2026-02-08 232152" src="https://github.com/user-attachments/assets/9fb738ce-1e23-4ffa-8e16-6148a1e3fd12" />
+<img width="393" height="780" alt="Screenshot 2026-02-08 232203" src="https://github.com/user-attachments/assets/5ed90dfa-cbe0-463d-bb06-2dd60b1859da" />
+<img width="388" height="770" alt="Screenshot 2026-02-08 232214" src="https://github.com/user-attachments/assets/cf1825e2-c10b-4e25-8d50-ef785c398081" />
+<img width="397" height="778" alt="Screenshot 2026-02-08 232226" src="https://github.com/user-attachments/assets/b9066e33-6b17-4357-bb17-f5b2f872c472" />
+<img width="391" height="774" alt="Screenshot 2026-02-08 232237" src="https://github.com/user-attachments/assets/5ae4b8bc-2268-4045-9ad4-372a4f8a8df8" />
+<img width="403" height="793" alt="Screenshot 2026-02-08 232247" src="https://github.com/user-attachments/assets/0f65e880-8793-4a9a-bba0-33c6fa9abbaa" />
+
+
