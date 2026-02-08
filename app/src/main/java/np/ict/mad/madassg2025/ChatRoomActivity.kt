@@ -1,6 +1,7 @@
 package np.ict.mad.madassg2025
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,10 +33,11 @@ class ChatRoomActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val chatId = intent.getStringExtra("CHAT_ID") ?: ""
-        val friendName = intent.getStringExtra("FRIEND_NAME") ?: "Buddy"
+        var currentGroupName by mutableStateOf(intent.getStringExtra("FRIEND_NAME") ?: "Group")
         val isGroup = intent.getBooleanExtra("IS_GROUP", false)
 
         setContent {
+            val context = LocalContext.current
             var messageText by remember { mutableStateOf("") }
             val messages = remember { mutableStateListOf<ChatMessage>() }
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
@@ -43,7 +46,13 @@ class ChatRoomActivity : ComponentActivity() {
             var showMenu by remember { mutableStateOf(false) }
             var showDeleteDialog by remember { mutableStateOf(false) }
             var showGroupSummary by remember { mutableStateOf(false) }
+            var showEditNameDialog by remember { mutableStateOf(false) }
+            var showAddMemberDialog by remember { mutableStateOf(false) } // NEW
+
+            var newNameInput by remember { mutableStateOf(currentGroupName) }
             val participants = remember { mutableStateListOf<UserAccount>() }
+            val myFriends = remember { mutableStateListOf<UserAccount>() } // NEW
+            var leaderId by remember { mutableStateOf("") }
 
             // --- REAL-TIME UPDATES ---
             LaunchedEffect(chatId) {
@@ -55,39 +64,140 @@ class ChatRoomActivity : ComponentActivity() {
                     }
 
                     if (isGroup) {
+                        firebaseHelper.listenToRoomMetadata(chatId) { data ->
+                            currentGroupName = data["groupName"] as? String ?: currentGroupName
+                            leaderId = data["groupLeaderId"] as? String ?: ""
+                        }
+
                         firebaseHelper.getGroupParticipants(chatId) { list ->
                             participants.clear()
                             participants.addAll(list)
                         }
+
+                        // Load friends to check who can be added
+                        firebaseHelper.listenToFriendsList { friends ->
+                            myFriends.clear()
+                            myFriends.addAll(friends)
+                        }
                     }
                 }
+            }
+
+            // --- ADD MEMBER DIALOG ---
+            if (showAddMemberDialog) {
+                // Filter friends: Only show friends NOT already in participants
+                val addableFriends = myFriends.filter { friend ->
+                    participants.none { it.uid == friend.uid }
+                }
+
+                AlertDialog(
+                    onDismissRequest = { showAddMemberDialog = false },
+                    title = { Text("Add to Group") },
+                    text = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            if (addableFriends.isEmpty()) {
+                                Text("All your friends are already in this group!", style = MaterialTheme.typography.bodySmall)
+                            } else {
+                                LazyColumn(modifier = Modifier.heightIn(max = 250.dp)) {
+                                    items(addableFriends) { friend ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    firebaseHelper.addMemberToGroup(chatId, friend)
+                                                    showAddMemberDialog = false
+                                                    Toast.makeText(context, "${friend.username} added!", Toast.LENGTH_SHORT).show()
+                                                }
+                                                .padding(vertical = 12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.PersonAdd, null, tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.width(12.dp))
+                                            Text(friend.username)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showAddMemberDialog = false }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            // --- EDIT GROUP NAME DIALOG ---
+            if (showEditNameDialog) {
+                AlertDialog(
+                    onDismissRequest = { showEditNameDialog = false },
+                    title = { Text("Edit Group Name") },
+                    text = {
+                        OutlinedTextField(
+                            value = newNameInput,
+                            onValueChange = { newNameInput = it },
+                            label = { Text("New Name") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            if (newNameInput.isNotBlank()) {
+                                firebaseHelper.updateGroupName(chatId, newNameInput) {
+                                    showEditNameDialog = false
+                                }
+                            }
+                        }) { Text("Update") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEditNameDialog = false }) { Text("Cancel") }
+                    }
+                )
             }
 
             // --- GROUP SUMMARY DIALOG ---
             if (showGroupSummary && isGroup) {
                 AlertDialog(
                     onDismissRequest = { showGroupSummary = false },
-                    title = { Text(text = friendName, fontWeight = FontWeight.Bold) },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = currentGroupName, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { showEditNameDialog = true }) {
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Name", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    },
                     text = {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Members", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
-                            Spacer(Modifier.height(8.dp))
+                            val leader = participants.find { it.uid == leaderId }
+                            val membersOnly = participants.filter { it.uid != leaderId }
 
-                            Box(modifier = Modifier.heightIn(max = 200.dp)) {
-                                LazyColumn {
-                                    items(participants) { member ->
-                                        Row(
-                                            modifier = Modifier.padding(vertical = 6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                            LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
+                                item { SectionHeader("Group Leader") }
+                                leader?.let {
+                                    item { ParticipantRow(it, isMe = it.uid == myId, isLeader = true) }
+                                }
+
+                                item { Spacer(Modifier.height(16.dp)) }
+
+                                // UPDATED SECTION HEADER WITH ADD BUTTON
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        SectionHeader("Members")
+                                        IconButton(
+                                            onClick = { showAddMemberDialog = true },
+                                            modifier = Modifier.size(24.dp)
                                         ) {
-                                            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                                            Spacer(Modifier.width(12.dp))
-                                            Text(
-                                                text = if (member.uid == myId) "${member.username} (You)" else member.username,
-                                                fontSize = 14.sp
-                                            )
+                                            Icon(Icons.Default.AddCircle, null, tint = MaterialTheme.colorScheme.primary)
                                         }
                                     }
+                                }
+
+                                items(membersOnly) { member ->
+                                    ParticipantRow(member, isMe = member.uid == myId, isLeader = false)
                                 }
                             }
 
@@ -113,24 +223,20 @@ class ChatRoomActivity : ComponentActivity() {
                 )
             }
 
-            // --- DELETE CONFIRMATION DIALOG ---
+            // --- MAIN CHAT UI (DELETE DIALOG & SCAFFOLD) ---
             if (showDeleteDialog) {
                 AlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
                     title = { Text("Delete Chat?") },
-                    text = { Text("This will hide the chat and clear your local history. Others will still see the conversation.") },
+                    text = { Text("This will hide the chat locally. Others will still see it.") },
                     confirmButton = {
                         TextButton(onClick = {
                             firebaseHelper.deleteChatForMe(chatId)
                             showDeleteDialog = false
                             finish()
-                        }) {
-                            Text("Delete", color = Color.Red)
-                        }
+                        }) { Text("Delete", color = Color.Red) }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
-                    }
+                    dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") } }
                 )
             }
 
@@ -138,40 +244,30 @@ class ChatRoomActivity : ComponentActivity() {
                 topBar = {
                     TopAppBar(
                         title = {
-                            // Header is clickable only if it's a group
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable(enabled = isGroup) { showGroupSummary = true }
                             ) {
-                                Text(text = friendName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                if (isGroup) {
-                                    Text("Tap for group info", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                                } else {
-                                    Text("Online", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                                }
+                                Text(text = currentGroupName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text(
+                                    text = if (isGroup) "Group Info" else "Online",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isGroup) MaterialTheme.colorScheme.primary else Color.Gray
+                                )
                             }
                         },
                         navigationIcon = {
-                            IconButton(onClick = { finish() }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                            }
+                            IconButton(onClick = { finish() }) { Icon(Icons.Default.ArrowBack, null) }
                         },
                         actions = {
-                            Box {
-                                IconButton(onClick = { showMenu = true }) {
-                                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
-                                }
-                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                    DropdownMenuItem(
-                                        text = { Text("Delete Chat") },
-                                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
-                                        onClick = {
-                                            showMenu = false
-                                            showDeleteDialog = true
-                                        }
-                                    )
-                                }
+                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete Chat") },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                                    onClick = { showMenu = false; showDeleteDialog = true }
+                                )
                             }
                         }
                     )
@@ -179,10 +275,7 @@ class ChatRoomActivity : ComponentActivity() {
                 bottomBar = {
                     Surface(tonalElevation = 2.dp, modifier = Modifier.imePadding()) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                                .navigationBarsPadding(),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp).navigationBarsPadding(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedTextField(
@@ -196,35 +289,24 @@ class ChatRoomActivity : ComponentActivity() {
                             FloatingActionButton(
                                 onClick = {
                                     if (messageText.isNotBlank()) {
-                                        firebaseHelper.sendMessage(chatId, messageText) {
-                                            messageText = ""
-                                        }
+                                        firebaseHelper.sendMessage(chatId, messageText) { messageText = "" }
                                     }
                                 },
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 shape = CircleShape,
                                 modifier = Modifier.size(48.dp)
-                            ) {
-                                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White)
-                            }
+                            ) { Icon(Icons.Default.Send, null, tint = Color.White) }
                         }
                     }
                 }
             ) { padding ->
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        .padding(horizontal = 16.dp),
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
                 ) {
                     items(messages) { msg ->
-                        ChatBubble(
-                            message = msg,
-                            isMe = msg.senderId == myId,
-                            isGroupChat = isGroup
-                        )
+                        ChatBubble(message = msg, isMe = msg.senderId == myId, isGroupChat = isGroup)
                     }
                 }
             }
@@ -233,15 +315,41 @@ class ChatRoomActivity : ComponentActivity() {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage, isMe: Boolean, isGroupChat: Boolean) {
-    val timeString = remember(message.timestamp) {
-        formatTimestamp(message.timestamp)
-    }
+fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.ExtraBold
+    )
+}
 
+@Composable
+fun ParticipantRow(user: UserAccount, isMe: Boolean, isLeader: Boolean) {
+    Row(
+        modifier = Modifier.padding(vertical = 6.dp).fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (isLeader) Icons.Default.Star else Icons.Default.Person,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = if (isLeader) Color(0xFFFFB300) else Color.Gray
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = if (isMe) "${user.username} (You)" else user.username,
+            fontSize = 14.sp,
+            fontWeight = if (isLeader) FontWeight.Bold else FontWeight.Normal
+        )
+    }
+}
+
+@Composable
+fun ChatBubble(message: ChatMessage, isMe: Boolean, isGroupChat: Boolean) {
+    val timeString = remember(message.timestamp) { formatTimestamp(message.timestamp) }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
         if (isGroupChat && !isMe) {
@@ -253,7 +361,6 @@ fun ChatBubble(message: ChatMessage, isMe: Boolean, isGroupChat: Boolean) {
                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
             )
         }
-
         Surface(
             color = if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
             shape = RoundedCornerShape(
@@ -271,13 +378,7 @@ fun ChatBubble(message: ChatMessage, isMe: Boolean, isGroupChat: Boolean) {
                 fontSize = 15.sp
             )
         }
-
-        Text(
-            text = timeString,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray,
-            modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp)
-        )
+        Text(text = timeString, style = MaterialTheme.typography.labelSmall, color = Color.Gray, modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp))
     }
 }
 

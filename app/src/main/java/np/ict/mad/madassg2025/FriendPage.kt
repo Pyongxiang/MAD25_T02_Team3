@@ -48,17 +48,15 @@ class FriendPage : ComponentActivity() {
             // --- DIALOG STATES ---
             var showRemoveDialog by remember { mutableStateOf(false) }
             var userToRemove by remember { mutableStateOf<UserAccount?>(null) }
-
-            // Profile Detail States
             var showProfileDialog by remember { mutableStateOf(false) }
             var selectedUserForProfile by remember { mutableStateOf<UserAccount?>(null) }
-            val selectedUserFavorites = remember { mutableStateListOf<Map<String, Any>>() }
 
-            // Current User's favorites to check for "Filled Heart"
+            val selectedUserFavorites = remember { mutableStateListOf<Map<String, Any>>() }
             val myFavorites = remember { mutableStateListOf<Map<String, Any>>() }
 
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
+            // 1. Initial Data Listeners
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToFriendRequests { pendingRequests.clear(); pendingRequests.addAll(it) }
                 firebaseHelper.listenToFriendsList { currentFriends.clear(); currentFriends.addAll(it) }
@@ -66,9 +64,21 @@ class FriendPage : ComponentActivity() {
 
                 if (myId.isNotEmpty()) {
                     firebaseHelper.listenToFavourites(myId, { favs ->
-                        myFavorites.clear()
-                        myFavorites.addAll(favs)
+                        myFavorites.clear(); myFavorites.addAll(favs)
                     }, {})
+                }
+            }
+
+            // 2. Search Logic Trigger
+            LaunchedEffect(searchQuery) {
+                val query = searchQuery.trim()
+                if (query.length >= 3) {
+                    firebaseHelper.searchUsers(query, onSuccess = { results ->
+                        searchResults.clear()
+                        searchResults.addAll(results.filter { it.uid != myId })
+                    }, onFailure = {})
+                } else {
+                    searchResults.clear()
                 }
             }
 
@@ -76,8 +86,7 @@ class FriendPage : ComponentActivity() {
             if (showProfileDialog && selectedUserForProfile != null) {
                 LaunchedEffect(selectedUserForProfile) {
                     firebaseHelper.listenToFavourites(selectedUserForProfile!!.uid, { favs ->
-                        selectedUserFavorites.clear()
-                        selectedUserFavorites.addAll(favs)
+                        selectedUserFavorites.clear(); selectedUserFavorites.addAll(favs)
                     }, {})
                 }
 
@@ -93,53 +102,34 @@ class FriendPage : ComponentActivity() {
                         Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
                             Text("Favourite Locations", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.height(12.dp))
-
                             if (selectedUserFavorites.isEmpty()) {
-                                Text("No favorites saved yet.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                                Text("No favorites saved yet.", color = Color.Gray)
                             } else {
                                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(selectedUserFavorites) { fav ->
                                         val locName = fav["name"]?.toString() ?: "Unknown"
                                         val lat = (fav["lat"] as? Double) ?: 0.0
                                         val lon = (fav["lon"] as? Double) ?: 0.0
-
-                                        val isAlreadyMyFavorite = myFavorites.any {
-                                            val myLat = (it["lat"] as? Double) ?: 0.0
-                                            val myLon = (it["lon"] as? Double) ?: 0.0
-                                            myLat == lat && myLon == lon
-                                        }
-
+                                        val isAlreadyMyFavorite = myFavorites.any { (it["lat"] == lat && it["lon"] == lon) }
                                         Card(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(12.dp),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                                    Icon(Icons.Default.LocationOn, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Text(locName, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                                }
-
-                                                IconButton(
-                                                    onClick = {
-                                                        if (myId.isNotEmpty() && !isAlreadyMyFavorite) {
-                                                            firebaseHelper.addFavourite(myId, locName, lat, lon, {
-                                                                Toast.makeText(context, "Added to your favorites!", Toast.LENGTH_SHORT).show()
-                                                            }, {})
-                                                        }
+                                            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.LocationOn, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(20.dp))
+                                                Text(locName, modifier = Modifier.weight(1f).padding(start = 8.dp), fontSize = 14.sp)
+                                                IconButton(onClick = {
+                                                    if (!isAlreadyMyFavorite) {
+                                                        firebaseHelper.addFavourite(myId, locName, lat, lon, {
+                                                            Toast.makeText(context, "Added!", Toast.LENGTH_SHORT).show()
+                                                        }, {})
                                                     }
-                                                ) {
+                                                }) {
                                                     Icon(
                                                         imageVector = if (isAlreadyMyFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                        contentDescription = "Favorite status",
-                                                        tint = if (isAlreadyMyFavorite) Color(0xFFE91E63) else Color.Gray,
-                                                        modifier = Modifier.size(22.dp)
+                                                        contentDescription = null,
+                                                        tint = if (isAlreadyMyFavorite) Color(0xFFE91E63) else Color.Gray
                                                     )
                                                 }
                                             }
@@ -153,35 +143,41 @@ class FriendPage : ComponentActivity() {
                 )
             }
 
-            // --- REMOVE CONFIRMATION DIALOG ---
+            // --- REMOVE FRIEND DIALOG ---
             if (showRemoveDialog && userToRemove != null) {
                 AlertDialog(
                     onDismissRequest = { showRemoveDialog = false },
+                    title = { Text("Remove Friend") },
+                    text = { Text("Are you sure you want to remove ${userToRemove?.username}?") },
                     confirmButton = {
                         TextButton(onClick = {
-                            firebaseHelper.removeFriend(userToRemove!!.uid, { showRemoveDialog = false }, {})
+                            firebaseHelper.removeFriend(userToRemove!!.uid, {
+                                showRemoveDialog = false
+                                Toast.makeText(context, "Friend Removed", Toast.LENGTH_SHORT).show()
+                            }, {})
                         }) { Text("Yes", color = Color.Red) }
                     },
-                    dismissButton = { TextButton(onClick = { showRemoveDialog = false }) { Text("No") } },
-                    title = { Text("Remove Friend") },
-                    text = { Text("Are you sure you want to remove ${userToRemove?.username}?") }
+                    dismissButton = { TextButton(onClick = { showRemoveDialog = false }) { Text("No") } }
                 )
             }
 
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                        IconButton(onClick = { finish() }) { Icon(Icons.Default.ArrowBack, "Back", tint = MaterialTheme.colorScheme.primary) }
+                    // Header
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        IconButton(onClick = { finish() }) { Icon(Icons.Default.ArrowBack, null, tint = MaterialTheme.colorScheme.primary) }
                         Text("Friends", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp))
                     }
 
+                    // Search Bar
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Search by username...") },
                         leadingIcon = { Icon(Icons.Default.Search, null) },
-                        shape = RoundedCornerShape(24.dp)
+                        shape = RoundedCornerShape(24.dp),
+                        singleLine = true
                     )
 
                     Spacer(modifier = Modifier.height(20.dp))
@@ -197,20 +193,52 @@ class FriendPage : ComponentActivity() {
                                     isSent -> "Pending"
                                     else -> "Add"
                                 }
-                                UserCard(user, actionText = action,
-                                    onAction = { if (action == "Add") firebaseHelper.sendFriendRequest(user, {}, {}) },
-                                    onProfileClick = {},
-                                    onMessageClick = {}
+                                UserCard(
+                                    user = user,
+                                    actionText = action,
+                                    onAction = {
+                                        when (action) {
+                                            "Add" -> firebaseHelper.sendFriendRequest(user, {
+                                                Toast.makeText(context, "Request Sent!", Toast.LENGTH_SHORT).show()
+                                            }, { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() })
+                                            "Pending" -> firebaseHelper.cancelFriendRequest(user.uid) {
+                                                Toast.makeText(context, "Request Cancelled", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    onProfileClick = { selectedUserForProfile = user; showProfileDialog = true },
+                                    onMessageClick = {
+                                        val chatId = firebaseHelper.getChatId(myId, user.uid)
+                                        firebaseHelper.restoreChatVisibility(chatId) {
+                                            val intent = Intent(context, ChatRoomActivity::class.java).apply {
+                                                putExtra("CHAT_ID", chatId)
+                                                putExtra("FRIEND_NAME", user.username)
+                                                putExtra("IS_GROUP", false)
+                                            }
+                                            context.startActivity(intent)
+                                        }
+                                    }
                                 )
                             }
                         } else {
                             if (pendingRequests.isNotEmpty()) {
                                 item { SectionTitle("Friend Requests") }
                                 items(pendingRequests) { user ->
-                                    RequestActionCard(user, onAccept = { firebaseHelper.acceptFriendRequest(user, {}, {}) }, onDeny = {})
+                                    RequestActionCard(
+                                        user = user,
+                                        onAccept = {
+                                            firebaseHelper.acceptFriendRequest(user, {
+                                                Toast.makeText(context, "Buddy Accepted!", Toast.LENGTH_SHORT).show()
+                                            }, {})
+                                        },
+                                        onDeny = {
+                                            firebaseHelper.denyFriendRequest(user.uid) {
+                                                Toast.makeText(context, "Request Denied", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    )
                                 }
                             }
-
                             item { SectionTitle("My Friends") }
                             items(currentFriends) { friend ->
                                 UserCard(
@@ -224,6 +252,7 @@ class FriendPage : ComponentActivity() {
                                             val intent = Intent(context, ChatRoomActivity::class.java).apply {
                                                 putExtra("CHAT_ID", chatId)
                                                 putExtra("FRIEND_NAME", friend.username)
+                                                putExtra("IS_GROUP", false)
                                             }
                                             context.startActivity(intent)
                                         }
@@ -247,22 +276,10 @@ fun UserCard(
     onMessageClick: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                modifier = Modifier.weight(1f).clickable { onProfileClick() },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Person, null, modifier = Modifier.size(24.dp))
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f).clickable { onProfileClick() }, verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Person, null)
                 }
                 Column(modifier = Modifier.padding(horizontal = 12.dp)) {
                     Text(user.username, fontWeight = FontWeight.SemiBold)
@@ -270,43 +287,27 @@ fun UserCard(
                 }
             }
 
-            // --- LARGER CHAT ICON ---
-            if (actionText == "Remove") {
-                IconButton(
-                    onClick = onMessageClick,
-                    modifier = Modifier.size(48.dp) // Larger touch target
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Chat,
-                        contentDescription = "Restore & Message",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp) // Bigger icon (up from default 24dp)
-                    )
+            if (actionText == "Remove" || actionText == "Friend") {
+                IconButton(onClick = onMessageClick, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.Chat, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
                 }
-            }
-
-            // --- SMALLER DELETE/REMOVE BUTTON ---
-            val isRemove = actionText == "Remove"
-            val buttonColor = when (actionText) {
-                "Remove" -> ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
-                "Pending", "Friend" -> ButtonDefaults.buttonColors(containerColor = Color.Gray)
-                else -> ButtonDefaults.buttonColors()
             }
 
             Button(
                 onClick = onAction,
-                colors = buttonColor,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), // Thinner padding
-                modifier = Modifier
-                    .height(32.dp) // Shorter height (Standard is 40dp+)
-                    .defaultMinSize(minWidth = 1.dp, minHeight = 1.dp)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when (actionText) {
+                        "Remove" -> Color(0xFFD32F2F)
+                        "Pending" -> Color(0xFF616161)
+                        "Friend" -> Color.Gray
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                ),
+                modifier = Modifier.height(32.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                enabled = actionText != "Friend"
             ) {
-                Text(
-                    text = actionText,
-                    color = Color.White,
-                    fontSize = 12.sp, // Smaller text
-                    fontWeight = FontWeight.Medium
-                )
+                Text(actionText, color = Color.White, fontSize = 12.sp)
             }
         }
     }
@@ -328,11 +329,5 @@ fun RequestActionCard(user: UserAccount, onAccept: () -> Unit, onDeny: () -> Uni
 
 @Composable
 fun SectionTitle(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(vertical = 4.dp)
-    )
+    Text(text = title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
 }
