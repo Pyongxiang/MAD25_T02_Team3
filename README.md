@@ -67,6 +67,7 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Improved location search with fallback handling
 - Weather detail widgets
 - Notification permission handling (Android 13+)
+- Social features added for communication
 - Text-to-Speech weather narration
 - UI and usability improvements
 
