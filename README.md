@@ -141,7 +141,7 @@ flowchart LR
   WM --> Notif["Notification System"]
 
   UI --> TTS["Text-to-Speech"]
-
+```
 ---
 
 ## Screenshots Of User Interface
