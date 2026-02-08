@@ -4,10 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -16,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,7 +37,6 @@ class MessagePage : ComponentActivity() {
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
             // -- REAL-TIME LISTENER --
-            // This stays active while the page is open and updates the list instantly
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToChatRooms { rooms ->
                     chatRooms.clear()
@@ -61,7 +63,7 @@ class MessagePage : ComponentActivity() {
                         IconButton(onClick = { finish() }) {
                             Icon(
                                 imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Back to Home",
+                                contentDescription = "Back",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -78,8 +80,7 @@ class MessagePage : ComponentActivity() {
                             Text(
                                 text = "Weather Buddies",
                                 fontSize = 12.sp,
-                                color = Color.Gray,
-                                letterSpacing = 1.sp
+                                color = Color.Gray
                             )
                         }
                     }
@@ -92,59 +93,47 @@ class MessagePage : ComponentActivity() {
                         onValueChange = { chatSearchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Search conversations...") },
-                        leadingIcon = {
-                            Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.outline)
-                        },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
                         shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                        ),
                         singleLine = true
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // --- DYNAMIC CHAT LIST ---
+                    // --- CHAT LIST ---
                     if (chatRooms.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No active buddies yet.\nAccept a friend request to start chatting!",
-                                color = Color.Gray,
-                                style = MaterialTheme.typography.bodyMedium,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No buddies yet. Accept a request to start chatting!", color = Color.Gray)
                         }
                     } else {
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            // Filter list based on search query
-                            val filteredRooms = if (chatSearchQuery.isEmpty()) {
-                                chatRooms
-                            } else {
-                                chatRooms.filter { room ->
-                                    val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
-                                    usernames.values.any { it.contains(chatSearchQuery, ignoreCase = true) }
-                                }
+                            val filteredRooms = if (chatSearchQuery.isEmpty()) chatRooms
+                            else chatRooms.filter { room ->
+                                val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
+                                usernames.values.any { it.contains(chatSearchQuery, ignoreCase = true) }
                             }
 
                             items(filteredRooms) { room ->
-                                // Resolve the friend's name (the one who isn't you)
                                 val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
-                                val friendName = usernames.entries.find { it.key != myId }?.value ?: "Unknown Buddy"
-                                val lastMsg = room["lastMessage"]?.toString() ?: "No messages yet"
+                                val friendName = usernames.entries.find { it.key != myId }?.value ?: "Unknown"
+                                val lastMsg = room["lastMessage"]?.toString() ?: "No messages"
                                 val chatId = room["chatId"]?.toString() ?: ""
+
+                                // --- UNREAD COUNT LOGIC ---
+                                val unreadMap = room["unreadCounts"] as? Map<String, Long> ?: emptyMap()
+                                val count = unreadMap[myId]?.toInt() ?: 0
 
                                 ChatBuddyCard(
                                     name = friendName,
                                     lastMessage = lastMsg,
+                                    unreadCount = count,
                                     onClick = {
-                                        // Next step: Navigate to ChatRoomActivity
+                                        // Reset count in DB immediately on click
+                                        firebaseHelper.markChatAsRead(chatId)
+
                                         val intent = Intent(this@MessagePage, ChatRoomActivity::class.java)
                                         intent.putExtra("CHAT_ID", chatId)
                                         intent.putExtra("FRIEND_NAME", friendName)
@@ -161,7 +150,7 @@ class MessagePage : ComponentActivity() {
 }
 
 @Composable
-fun ChatBuddyCard(name: String, lastMessage: String, onClick: () -> Unit) {
+fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -175,38 +164,49 @@ fun ChatBuddyCard(name: String, lastMessage: String, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Buddy Avatar (Initial)
+            // Avatar
             Surface(
                 modifier = Modifier.size(50.dp),
-                shape = RoundedCornerShape(25.dp),
+                shape = CircleShape,
                 color = MaterialTheme.colorScheme.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = name.take(1).uppercase(),
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
+                    Text(name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
 
+            // Info
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Text(name, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text(
                     text = lastMessage,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray,
+                    color = if (unreadCount > 0) MaterialTheme.colorScheme.onSurface else Color.Gray,
+                    fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Normal,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+
+            // --- UNREAD BADGE ---
+            if (unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (unreadCount > 9) "9+" else unreadCount.toString(),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
