@@ -72,12 +72,13 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Cloud-synced favourite locations using Firestore
 - Background weather alerts using WorkManager
 - Improved location search with fallback handling
+- Map-based weather search using Google Maps
 - Weather detail widgets
 - Notification permission handling (Android 13+)
 - Social features added for communication
 - Text-to-Speech weather narration
 - UI and usability improvements
-- Geocoding & Reverse Geocoding (place names ↔ coordinates)
+- Geocoding & reverse geocoding (place names ↔ coordinates)
 
 ---
 
