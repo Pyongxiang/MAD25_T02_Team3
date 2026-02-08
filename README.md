@@ -97,14 +97,10 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Designed app icon
 
 ### Zhi Heng
-- Current weather data handling
-- Weather UI presentation
-- API integration support
+- 
 
 ### Keagan Tan
-- Forecast feature implementation
-- Forecast screen UI
-- Navigation and testing support
+- 
 
 ---
 
