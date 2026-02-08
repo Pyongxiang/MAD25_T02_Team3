@@ -80,15 +80,7 @@ object WeatherRepository {
             }
         }
 
-    /**
-     * Search places (forward geocode)
-     *
-     * Strategy:
-     * 1) Try OpenWeather direct geocoding (fast + typed via Retrofit), biased to Singapore.
-     * 2) If results are weak, use OpenStreetMap sources:
-     *    - Nominatim search (bounded to SG) for better textual place matching
-     *    - Overpass POI search for specific venues (e.g., polytechnics/schools)
-     */
+
     suspend fun searchPlaces(query: String, limit: Int = 5): List<DirectGeoResult> =
         withContext(Dispatchers.IO) {
 
@@ -248,9 +240,9 @@ object WeatherRepository {
         }
     }
 
-    /**
-     * Reverse geocode using Nominatim + Overpass heuristic
-     */
+
+     //Reverse geocode using Nominatim + Overpass heuristic
+
     suspend fun getPlaceName(lat: Double, lon: Double): String? =
         withContext(Dispatchers.IO) {
 
