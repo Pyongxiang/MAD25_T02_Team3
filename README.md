@@ -28,6 +28,7 @@ In addition to weather information, the app supports **social interaction featur
 - Deployment: **Local build / Emulator**
 - APIs & Services:
   - OpenWeather API
+  - Google Maps SDK (Compose)
   - Firebase Authentication
   - Firebase Firestore
 
