@@ -29,8 +29,6 @@ import np.ict.mad.madassg2025.ui.home.SavedLocation
 import np.ict.mad.madassg2025.ui.home.UnitPref
 import np.ict.mad.madassg2025.ui.home.computeSkyMode
 import np.ict.mad.madassg2025.ui.home.favKey
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import np.ict.mad.madassg2025.forecast.ForecastActivity
 
@@ -65,46 +63,36 @@ class HomePage : ComponentActivity() {
         // Load unit preference first so UI has correct °C/°F immediately
         uiState = uiState.copy(unit = loadUnitPref())
 
-        val userKey = buildUserKey(firebaseHelper)          // Used for SharedPreferences fallback
-        val userId = firebaseHelper.getCurrentUser()?.uid   // Firestore favourites requires user uid
-        if (userId != null) {
-            // Logged-in: listen to favourites from Firestore (real-time updates)
-            favListener = firebaseHelper.listenToFavourites(
-                userId = userId,
-                onUpdate = { docs ->
-                    // Convert Firestore docs into existing SavedLocation model
-                    val saved = docs.mapNotNull { d ->
-                        val name = d["name"] as? String ?: return@mapNotNull null
-                        val lat = (d["lat"] as? Number)?.toDouble() ?: return@mapNotNull null
-                        val lon = (d["lon"] as? Number)?.toDouble() ?: return@mapNotNull null
-                        SavedLocation(name = name, lat = lat, lon = lon)
-                    }
-
-                    val seeded = seedMiniMap(saved, existing = uiState.favouritesMini)
-
-                    uiState = uiState.copy(
-                        savedLocations = saved,
-                        favouritesMini = seeded
-                    )
-
-                    refreshFavouritesMiniWeather()
-                },
-                onFailure = { err ->
-                    uiState = uiState.copy(error = err)
-                }
-            )
-        } else {
-            // Not logged in: fallback to SharedPreferences so app still works
-            // fallback: keep current behaviour for guest/not logged in
-            val saved = loadSavedLocations(userKey)
-            uiState = uiState.copy(
-                unit = loadUnitPref(),
-                savedLocations = saved,
-                favouritesMini = seedMiniMap(saved, existing = emptyMap())
-            )
-            refreshFavouritesMiniWeather()
+        val userId = firebaseHelper.getCurrentUser()?.uid
+        if (userId == null) {
+            // No guest mode: if user somehow gets here, send them back
+            startActivity(Intent(this, MainActivity::class.java)) // activity that shows LoginPage
+            finish()
+            return
         }
 
+        // Logged-in only: listen to favourites from Firestore (real-time updates)
+        favListener = firebaseHelper.listenToFavourites(
+            userId = userId,
+            onUpdate = { docs ->
+                val saved = docs.mapNotNull { d ->
+                    val name = d["name"] as? String ?: return@mapNotNull null
+                    val lat = (d["lat"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    val lon = (d["lon"] as? Number)?.toDouble() ?: return@mapNotNull null
+                    SavedLocation(name = name, lat = lat, lon = lon)
+                }
+
+                uiState = uiState.copy(
+                    savedLocations = saved,
+                    favouritesMini = seedMiniMap(saved, existing = uiState.favouritesMini)
+                )
+
+                refreshFavouritesMiniWeather()
+            },
+            onFailure = { err ->
+                uiState = uiState.copy(error = err)
+            }
+        )
 
         setContent {
             HomeScreen(
@@ -276,7 +264,7 @@ class HomePage : ComponentActivity() {
     }
 
     private fun addSearchResultToFavourites(r: PlaceSuggestion) {
-        val userId = firebaseHelper.getCurrentUser()?.uid
+        val userId = firebaseHelper.getCurrentUser()?.uid ?: return
 
         val newItem = SavedLocation(
             name = r.displayLabel,
@@ -284,38 +272,16 @@ class HomePage : ComponentActivity() {
             lon = r.lon
         )
 
-        if (userId != null) {
-            // Logged in -> save to Firestore (listener will auto-update UI)
-            firebaseHelper.addFavourite(
-                userId = userId,
-                name = newItem.name,
-                lat = newItem.lat,
-                lon = newItem.lon,
-                onSuccess = { /* no need to manually update uiState */ },
-                onFailure = { err -> uiState = uiState.copy(error = err) }
-            )
-        } else {
-            // Not logged in -> keep old SharedPreferences behaviour
-            val userKey = buildUserKey(firebaseHelper)
+        firebaseHelper.addFavourite(
+            userId = userId,
+            name = newItem.name,
+            lat = newItem.lat,
+            lon = newItem.lon,
+            onSuccess = { },
+            onFailure = { err -> uiState = uiState.copy(error = err) }
+        )
 
-            val updated = (uiState.savedLocations + newItem)
-                .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
-                .take(30)
-
-            uiState = uiState.copy(
-                savedLocations = updated,
-                favouritesMini = seedMiniMap(updated, uiState.favouritesMini),
-                searchQuery = "",
-                searchResults = emptyList(),
-                searchLoading = false,
-                searchError = null
-            )
-
-            saveSavedLocations(userKey, updated)
-            refreshFavouritesMiniWeather()
-        }
-
-        // Clear search UI either way
+        // Clear search UI
         uiState = uiState.copy(
             searchQuery = "",
             searchResults = emptyList(),
@@ -488,22 +454,6 @@ class HomePage : ComponentActivity() {
                 onSuccess = { /* Firestore listener updates UI */ },
                 onFailure = { err -> uiState = uiState.copy(error = err) }
             )
-        } else {
-            // Guest -> save to SharedPreferences
-            val userKey = buildUserKey(firebaseHelper)
-            val newItem = SavedLocation(name = name, lat = lat, lon = lon)
-
-            val updated = (uiState.savedLocations + newItem)
-                .distinctBy { "${it.name}|${it.lat}|${it.lon}" }
-                .take(30)
-
-            uiState = uiState.copy(
-                savedLocations = updated,
-                favouritesMini = seedMiniMap(updated, uiState.favouritesMini)
-            )
-
-            saveSavedLocations(userKey, updated)
-            refreshFavouritesMiniWeather()
         }
     }
 
@@ -519,17 +469,6 @@ class HomePage : ComponentActivity() {
                 onSuccess = { /* listener will update uiState */ },
                 onFailure = { err -> uiState = uiState.copy(error = err) }
             )
-        } else {
-            // Guest -> old SharedPreferences behaviour
-            val userKey = buildUserKey(firebaseHelper)
-            val updated = uiState.savedLocations.filterNot {
-                it.name == loc.name && it.lat == loc.lat && it.lon == loc.lon
-            }
-
-            val updatedMini = uiState.favouritesMini.toMutableMap().apply { remove(favKey(loc)) }
-
-            uiState = uiState.copy(savedLocations = updated, favouritesMini = updatedMini)
-            saveSavedLocations(userKey, updated)
         }
     }
 
@@ -586,12 +525,6 @@ class HomePage : ComponentActivity() {
 
     private fun prefs() = getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
 
-    private fun buildUserKey(firebaseHelper: FirebaseHelper): String {
-        val uid = firebaseHelper.getCurrentUser()?.uid
-        val email = firebaseHelper.getCurrentUserEmail()
-        return uid ?: email ?: "guest"
-    }
-
     private fun loadUnitPref(): UnitPref {
         val raw = prefs().getString("unit_pref", UnitPref.C.name) ?: UnitPref.C.name
         return runCatching { UnitPref.valueOf(raw) }.getOrDefault(UnitPref.C)
@@ -599,31 +532,6 @@ class HomePage : ComponentActivity() {
 
     private fun saveUnitPref(unit: UnitPref) {
         prefs().edit().putString("unit_pref", unit.name).apply()
-    }
-
-    private fun loadSavedLocations(userKey: String): List<SavedLocation> {
-        val raw = prefs().getString("saved_locations_$userKey", null) ?: return emptyList()
-        return runCatching {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val o = arr.getJSONObject(i)
-                    add(SavedLocation(o.getString("name"), o.getDouble("lat"), o.getDouble("lon")))
-                }
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    private fun saveSavedLocations(userKey: String, list: List<SavedLocation>) {
-        val arr = JSONArray()
-        list.forEach { loc ->
-            val o = JSONObject()
-            o.put("name", loc.name)
-            o.put("lat", loc.lat)
-            o.put("lon", loc.lon)
-            arr.put(o)
-        }
-        prefs().edit().putString("saved_locations_$userKey", arr.toString()).apply()
     }
 }
 
