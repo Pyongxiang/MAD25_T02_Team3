@@ -3,6 +3,8 @@ package np.ict.mad.madassg2025
 import android.location.Address
 import android.location.Geocoder
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -20,13 +22,45 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class MapSearchActivity : ComponentActivity() {
+
+    private val firebaseHelper = FirebaseHelper()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // force-close if not logged in
+        val userId = firebaseHelper.getCurrentUser()?.uid
+        if (userId == null) {
+            Toast.makeText(this, "Please login first.", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
 
         setContent {
             MaterialTheme {
                 MapSearchScreen(
-                    onBack = { finish() }
+                    onBack = { finish() },
+                    onSaveFavourite = save@{ name, lat, lon ->
+                        val uid = firebaseHelper.getCurrentUser()?.uid
+                        if (uid == null) {
+                            Toast.makeText(this, "Please login first.", Toast.LENGTH_SHORT).show()
+                            return@save
+                        }
+
+                        firebaseHelper.addFavourite(
+                            userId = uid,
+                            name = name,
+                            lat = lat,
+                            lon = lon,
+                            onSuccess = {
+                                Toast.makeText(this, "Saved to favourites!", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = { err ->
+                                Log.e("MapSearch", "Save favourite failed: $err")
+                                Toast.makeText(this, "Save failed: $err", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
                 )
             }
         }
@@ -35,20 +69,19 @@ class MapSearchActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MapSearchScreen(onBack: () -> Unit) {
-
+fun MapSearchScreen(
+    onBack: () -> Unit,
+    onSaveFavourite: (name: String, lat: Double, lon: Double) -> Unit
+) {
     val context = LocalContext.current
     val geocoder = remember { Geocoder(context, Locale("en", "SG")) }
     val scope = rememberCoroutineScope()
 
-    // Default to Singapore
     val defaultSG = LatLng(1.3521, 103.8198)
 
     var picked by remember { mutableStateOf(defaultSG) }
     var hasPicked by remember { mutableStateOf(false) }
-
     var pickedName by remember { mutableStateOf("Singapore") }
-
     var searchQuery by remember { mutableStateOf("") }
 
     var loading by remember { mutableStateOf(false) }
@@ -66,7 +99,7 @@ fun MapSearchScreen(onBack: () -> Unit) {
                     val list = geocoder.getFromLocation(latLng.latitude, latLng.longitude, 1)
                     val addr = list?.firstOrNull()
                     if (addr != null) bestPlaceLabel(addr) else null
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             }
@@ -78,20 +111,17 @@ fun MapSearchScreen(onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Map Weather Search") },
-                navigationIcon = {
-                    TextButton(onClick = onBack) { Text("Back") }
-                }
+                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } }
             )
         }
     ) { padding ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
 
-            // --- Search bar ---
+            // Search bar
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -117,7 +147,6 @@ fun MapSearchScreen(onBack: () -> Unit) {
 
                             val foundLatLng = withContext(Dispatchers.IO) {
                                 try {
-                                    // ✅ Make vague searches work better by biasing to Singapore
                                     val q = searchQuery.trim()
                                     val sgQuery =
                                         if (q.contains("singapore", ignoreCase = true)) q else "$q, Singapore"
@@ -125,33 +154,29 @@ fun MapSearchScreen(onBack: () -> Unit) {
                                     val results = geocoder.getFromLocationName(sgQuery, 1)
                                     val addr = results?.firstOrNull()
                                     if (addr != null) LatLng(addr.latitude, addr.longitude) else null
-                                } catch (e: Exception) {
+                                } catch (_: Exception) {
                                     null
                                 }
                             }
 
                             if (foundLatLng == null) {
                                 error = "Place not found. Try a different keyword/postal code."
-                                loading = false
                             } else {
                                 picked = foundLatLng
                                 hasPicked = true
                                 updatePickedName(foundLatLng)
-
                                 cameraPositionState.position =
                                     CameraPosition.fromLatLngZoom(foundLatLng, 15f)
-
-                                loading = false
                             }
+
+                            loading = false
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Search & Move Map")
-                }
+                ) { Text("Search & Move Map") }
             }
 
-            // --- Map area ---
+            // Map
             GoogleMap(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,7 +196,7 @@ fun MapSearchScreen(onBack: () -> Unit) {
                 )
             }
 
-            // --- Bottom info + action ---
+            // Bottom info + action
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -183,18 +208,10 @@ fun MapSearchScreen(onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                Text(
-                    text = "Place: $pickedName",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Text("Place: $pickedName", style = MaterialTheme.typography.bodyMedium)
 
-                if (weatherLine != null) {
-                    Text(weatherLine!!, style = MaterialTheme.typography.titleMedium)
-                }
-
-                if (error != null) {
-                    Text("Error: $error", color = MaterialTheme.colorScheme.error)
-                }
+                if (weatherLine != null) Text(weatherLine!!, style = MaterialTheme.typography.titleMedium)
+                if (error != null) Text("Error: $error", color = MaterialTheme.colorScheme.error)
 
                 Button(
                     onClick = {
@@ -213,8 +230,7 @@ fun MapSearchScreen(onBack: () -> Unit) {
                                 } else {
                                     val temp = w.main.temp.toInt()
                                     val desc = w.weather.firstOrNull()?.description ?: "—"
-                                    weatherLine =
-                                        "$pickedName: ${temp}°C • ${desc.replaceFirstChar { it.uppercase() }}"
+                                    weatherLine = "$pickedName: ${temp}°C • ${desc.replaceFirstChar { it.uppercase() }}"
                                 }
                             } catch (e: Exception) {
                                 error = e.message ?: "Unknown error"
@@ -225,32 +241,41 @@ fun MapSearchScreen(onBack: () -> Unit) {
                     },
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth()
+                ) { Text(if (loading) "Loading..." else "Get Weather Here") }
+
+                Button(
+                    onClick = {
+                        val nameToSave =
+                            if (pickedName.isBlank() || pickedName == "Selected Location")
+                                "Pinned (${ "%.3f".format(picked.latitude) }, ${ "%.3f".format(picked.longitude) })"
+                            else pickedName
+
+                        onSaveFavourite(nameToSave, picked.latitude, picked.longitude)
+                    },
+                    enabled = !loading,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(if (loading) "Loading..." else "Get Weather Here")
+                    Text("Add to Favourite Locations")
                 }
             }
         }
     }
 }
 
-/**
- * Fixes the "Place: 8" (e.g.) issue by choosing the best human-readable label
- * and ignoring labels that are only numbers.
- */
 private fun bestPlaceLabel(a: Address): String {
     val candidates = listOfNotNull(
-        a.subLocality,        // Bugis / Little India (sometimes)
-        a.thoroughfare,       // Street name
-        a.locality,           // Singapore (often)
+        a.subLocality,
+        a.thoroughfare,
+        a.locality,
         a.subAdminArea,
         a.adminArea,
-        a.featureName         // Last resort (can be house number)
+        a.featureName
     )
 
     val cleaned = candidates
         .map { it.trim() }
         .filter { it.isNotBlank() }
-        .firstOrNull { s -> s.any { ch -> ch.isLetter() } } // must contain a letter
+        .firstOrNull { s -> s.any { ch -> ch.isLetter() } }
 
     return cleaned ?: (a.getAddressLine(0) ?: "Unknown place")
 }
