@@ -42,10 +42,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +57,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.launch
 import np.ict.mad.madassg2025.alerts.WeatherNotifier
 import np.ict.mad.madassg2025.settings.AlertFrequency
@@ -111,7 +116,48 @@ private fun SettingsScreen(
     val freqName by store.alertFrequencyFlow.collectAsState(initial = AlertFrequency.DAILY.name)
     val alertFrequency = AlertFrequency.fromStored(freqName)
 
-    val savedLocations = remember { loadSavedLocationsForUser(context) }
+    // ✅ NEW: Saved locations now comes from Firestore when logged in, else SharedPreferences.
+    var savedLocations by remember { mutableStateOf<List<SavedLocation>>(emptyList()) }
+    var favListener by remember { mutableStateOf<ListenerRegistration?>(null) }
+
+    val helper = remember { FirebaseHelper() }
+    val userId = helper.getCurrentUser()?.uid
+
+    // Start loading favourites depending on login state
+    LaunchedEffect(userId) {
+        if (userId == null) {
+            // Guest -> local
+            savedLocations = loadSavedLocationsFromPrefs(context)
+        } else {
+            // Logged in -> Firestore realtime
+            favListener?.remove()
+            favListener = helper.listenToFavourites(
+                userId = userId,
+                onUpdate = { docs ->
+                    val list = docs.mapNotNull { d ->
+                        val name = d["name"] as? String ?: return@mapNotNull null
+                        val lat = (d["lat"] as? Number)?.toDouble() ?: return@mapNotNull null
+                        val lon = (d["lon"] as? Number)?.toDouble() ?: return@mapNotNull null
+                        SavedLocation(name = name, lat = lat, lon = lon)
+                    }
+                    savedLocations = list
+                },
+                onFailure = { err ->
+                    // If Firestore fails, fall back to local so app still works
+                    savedLocations = loadSavedLocationsFromPrefs(context)
+                    Toast.makeText(context, "Failed to load favourites: $err", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+    }
+
+    // Clean up Firestore listener
+    DisposableEffect(Unit) {
+        onDispose {
+            favListener?.remove()
+            favListener = null
+        }
+    }
 
     val bg = MaterialTheme.colorScheme.background
     val cardShape = RoundedCornerShape(16.dp)
@@ -127,16 +173,12 @@ private fun SettingsScreen(
     }
 
     fun canPostNotificationsNow(): Boolean {
-        // If user disabled notifications for the app, no popup will ever show.
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return false
 
-        // Android 13+ requires POST_NOTIFICATIONS permission.
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+        } else true
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = bg) {
@@ -214,7 +256,6 @@ private fun SettingsScreen(
                 ) {
                     Column(Modifier.padding(14.dp)) {
 
-                        // Default location display
                         val currentDefault = if (!defaultLat.isNaN() && !defaultLon.isNaN()) {
                             defaultName.ifBlank { "Default location" }
                         } else "Not set"
@@ -263,7 +304,6 @@ private fun SettingsScreen(
                         Divider()
                         Spacer(Modifier.height(14.dp))
 
-                        // Alert Frequency
                         SettingRow(
                             label = "Alert frequency",
                             value = alertFrequency.label,
@@ -284,9 +324,6 @@ private fun SettingsScreen(
                         Divider()
                         Spacer(Modifier.height(14.dp))
 
-                        // FIXED LAYOUT:
-                        // - Row only contains text + switch (prevents the vertical-letters bug).
-                        // - Test button is moved BELOW the Row.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -332,7 +369,6 @@ private fun SettingsScreen(
                                     return@Button
                                 }
 
-                                // Need a default location to fetch weather for
                                 if (defaultLat.isNaN() || defaultLon.isNaN()) {
                                     Toast.makeText(
                                         context,
@@ -342,16 +378,12 @@ private fun SettingsScreen(
                                     return@Button
                                 }
 
-                                val name =
-                                    if (defaultName.isBlank()) "Default location" else defaultName
+                                val name = if (defaultName.isBlank()) "Default location" else defaultName
 
                                 scope.launch {
                                     val result =
                                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                            WeatherForecast().getHourly24AndDaily5(
-                                                defaultLat,
-                                                defaultLon
-                                            )
+                                            WeatherForecast().getHourly24AndDaily5(defaultLat, defaultLon)
                                         }
 
                                     if (result == null || result.hourlyNext24.isEmpty()) {
@@ -365,13 +397,9 @@ private fun SettingsScreen(
 
                                     val now = result.hourlyNext24.first()
                                     val msg =
-                                        "$name: ${now.tempC}°C, ${now.description} • POP ${now.popPct}% • Rain ${
-                                            "%.1f".format(
-                                                now.rainMm
-                                            )
-                                        }mm"
+                                        "$name: ${now.tempC}°C, ${now.description} • POP ${now.popPct}% • Rain ${"%.1f".format(now.rainMm)}mm"
 
-                                    np.ict.mad.madassg2025.alerts.WeatherNotifier.showTestAlert(
+                                    WeatherNotifier.showTestAlert(
                                         context = context,
                                         title = "Weather now",
                                         message = msg
@@ -400,7 +428,7 @@ private fun SettingsScreen(
     }
 }
 
-                        @Composable
+@Composable
 private fun SettingsSectionTitle(text: String) {
     Text(
         text = text,
@@ -411,11 +439,6 @@ private fun SettingsSectionTitle(text: String) {
     )
 }
 
-/**
- * IMPORTANT FIX:
- * - Give the value text its own width cap + ellipsis.
- * - This prevents it from being measured in a tiny width (which caused “vertical letters”).
- */
 @Composable
 private fun SettingRow(label: String, value: String, helper: String) {
     Row(
@@ -536,7 +559,8 @@ private fun FreqChip(
 
 private fun approxEqual(a: Double, b: Double): Boolean = abs(a - b) < 0.00001
 
-private fun loadSavedLocationsForUser(context: Context): List<SavedLocation> {
+// ✅ Guest fallback (SharedPreferences). This matches your existing storage format.
+private fun loadSavedLocationsFromPrefs(context: Context): List<SavedLocation> {
     val prefs = context.getSharedPreferences("weather_prefs", Context.MODE_PRIVATE)
 
     val helper = FirebaseHelper()
