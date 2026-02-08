@@ -415,20 +415,43 @@ class FirebaseHelper {
     // function to send message in the chat room
     fun sendMessage(chatId: String, text: String, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
+
         getUserProfile(onSuccess = { profile ->
             val myName = profile?.get("username")?.toString() ?: "Unknown"
+
             val messageData = hashMapOf(
                 "senderId" to myId,
                 "senderName" to myName,
                 "text" to text,
                 "timestamp" to System.currentTimeMillis()
             )
+
             db.collection("chat_rooms").document(chatId).collection("messages").add(messageData)
                 .addOnSuccessListener {
-                    db.collection("chat_rooms").document(chatId).update("lastMessage", text, "timestamp", FieldValue.serverTimestamp())
-                    onSuccess()
+                    // Update room metadata
+                    val roomRef = db.collection("chat_rooms").document(chatId)
+                    db.runTransaction { transaction ->
+                        val snapshot = transaction.get(roomRef)
+                        val participants = snapshot.get("participants") as? List<String> ?: emptyList()
+
+                        // Increment unread count for others
+                        participants.forEach { userId ->
+                            if (userId != myId) {
+                                transaction.update(roomRef, "unreadCounts.$userId", FieldValue.increment(1))
+                            }
+                        }
+
+                        transaction.update(roomRef, "lastMessage", text)
+                        transaction.update(roomRef, "timestamp", FieldValue.serverTimestamp())
+                    }.addOnSuccessListener { onSuccess() }
                 }
         }, onFailure = {})
+    }
+
+    fun markChatAsRead(chatId: String) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("chat_rooms").document(chatId)
+            .update("unreadCounts.$myId", 0)
     }
 
     // listen for messages in the chat room
