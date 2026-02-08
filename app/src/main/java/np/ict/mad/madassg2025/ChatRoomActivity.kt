@@ -3,14 +3,14 @@ package np.ict.mad.madassg2025
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,36 +30,126 @@ class ChatRoomActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Get the Intent extras passed from MessagePage
         val chatId = intent.getStringExtra("CHAT_ID") ?: ""
         val friendName = intent.getStringExtra("FRIEND_NAME") ?: "Buddy"
+        val isGroup = intent.getBooleanExtra("IS_GROUP", false)
 
         setContent {
             var messageText by remember { mutableStateOf("") }
             val messages = remember { mutableStateListOf<ChatMessage>() }
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
+            // --- UI STATES ---
+            var showMenu by remember { mutableStateOf(false) }
+            var showDeleteDialog by remember { mutableStateOf(false) }
+            var showGroupSummary by remember { mutableStateOf(false) }
+            val participants = remember { mutableStateListOf<UserAccount>() }
+
             // --- REAL-TIME UPDATES ---
             LaunchedEffect(chatId) {
                 if (chatId.isNotEmpty()) {
-                    // 1. Reset unread count immediately upon opening the room
                     firebaseHelper.markChatAsRead(chatId)
-
-                    // 2. Listen for incoming messages
                     firebaseHelper.listenToMessages(chatId) { newList ->
                         messages.clear()
                         messages.addAll(newList)
                     }
+
+                    if (isGroup) {
+                        firebaseHelper.getGroupParticipants(chatId) { list ->
+                            participants.clear()
+                            participants.addAll(list)
+                        }
+                    }
                 }
+            }
+
+            // --- GROUP SUMMARY DIALOG ---
+            if (showGroupSummary && isGroup) {
+                AlertDialog(
+                    onDismissRequest = { showGroupSummary = false },
+                    title = { Text(text = friendName, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("Members", style = MaterialTheme.typography.labelLarge, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+
+                            Box(modifier = Modifier.heightIn(max = 200.dp)) {
+                                LazyColumn {
+                                    items(participants) { member ->
+                                        Row(
+                                            modifier = Modifier.padding(vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(Modifier.width(12.dp))
+                                            Text(
+                                                text = if (member.uid == myId) "${member.username} (You)" else member.username,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Button(
+                                onClick = {
+                                    firebaseHelper.removeMemberFromGroup(chatId, myId)
+                                    showGroupSummary = false
+                                    finish()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Leave Group", color = Color.White)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showGroupSummary = false }) { Text("Close") }
+                    }
+                )
+            }
+
+            // --- DELETE CONFIRMATION DIALOG ---
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("Delete Chat?") },
+                    text = { Text("This will hide the chat and clear your local history. Others will still see the conversation.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            firebaseHelper.deleteChatForMe(chatId)
+                            showDeleteDialog = false
+                            finish()
+                        }) {
+                            Text("Delete", color = Color.Red)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel") }
+                    }
+                )
             }
 
             Scaffold(
                 topBar = {
                     TopAppBar(
                         title = {
-                            Column {
+                            // Header is clickable only if it's a group
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = isGroup) { showGroupSummary = true }
+                            ) {
                                 Text(text = friendName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text(text = "Online", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                if (isGroup) {
+                                    Text("Tap for group info", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                } else {
+                                    Text("Online", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                }
                             }
                         },
                         navigationIcon = {
@@ -67,13 +157,26 @@ class ChatRoomActivity : ComponentActivity() {
                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                             }
                         },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        )
+                        actions = {
+                            Box {
+                                IconButton(onClick = { showMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Options")
+                                }
+                                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text("Delete Chat") },
+                                        leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                                        onClick = {
+                                            showMenu = false
+                                            showDeleteDialog = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     )
                 },
                 bottomBar = {
-                    // Message Input
                     Surface(tonalElevation = 2.dp, modifier = Modifier.imePadding()) {
                         Row(
                             modifier = Modifier
@@ -87,18 +190,14 @@ class ChatRoomActivity : ComponentActivity() {
                                 onValueChange = { messageText = it },
                                 modifier = Modifier.weight(1f),
                                 placeholder = { Text("Type a message...") },
-                                shape = RoundedCornerShape(24.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                )
+                                shape = RoundedCornerShape(24.dp)
                             )
                             Spacer(Modifier.width(8.dp))
                             FloatingActionButton(
                                 onClick = {
                                     if (messageText.isNotBlank()) {
                                         firebaseHelper.sendMessage(chatId, messageText) {
-                                            messageText = "" // Clear input on success
+                                            messageText = ""
                                         }
                                     }
                                 },
@@ -112,18 +211,20 @@ class ChatRoomActivity : ComponentActivity() {
                     }
                 }
             ) { padding ->
-                // Message List
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding)
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
-                    reverseLayout = false // Messages flow from top to bottom
+                    contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
                 ) {
                     items(messages) { msg ->
-                        ChatBubble(msg, isMe = msg.senderId == myId)
+                        ChatBubble(
+                            message = msg,
+                            isMe = msg.senderId == myId,
+                            isGroupChat = isGroup
+                        )
                     }
                 }
             }
@@ -132,8 +233,7 @@ class ChatRoomActivity : ComponentActivity() {
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage, isMe: Boolean) {
-    // convert timestamp to readable format
+fun ChatBubble(message: ChatMessage, isMe: Boolean, isGroupChat: Boolean) {
     val timeString = remember(message.timestamp) {
         formatTimestamp(message.timestamp)
     }
@@ -141,16 +241,26 @@ fun ChatBubble(message: ChatMessage, isMe: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 2.dp),
+            .padding(vertical = 4.dp),
         horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
+        if (isGroupChat && !isMe) {
+            Text(
+                text = message.senderName,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+            )
+        }
+
         Surface(
             color = if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
             shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isMe) 16.dp else 4.dp,
-                bottomEnd = if (isMe) 4.dp else 16.dp
+                topStart = if (isMe || isGroupChat) 16.dp else 4.dp,
+                topEnd = if (isMe) 4.dp else 16.dp,
+                bottomStart = 16.dp,
+                bottomEnd = 16.dp
             ),
             tonalElevation = 1.dp
         ) {
@@ -162,7 +272,6 @@ fun ChatBubble(message: ChatMessage, isMe: Boolean) {
             )
         }
 
-        // --- TIMESTAMP ---
         Text(
             text = timeString,
             style = MaterialTheme.typography.labelSmall,
@@ -172,7 +281,6 @@ fun ChatBubble(message: ChatMessage, isMe: Boolean) {
     }
 }
 
-// function to format timestamp
 fun formatTimestamp(timestamp: Long): String {
     if (timestamp == 0L) return ""
     val sdf = SimpleDateFormat("h:mm a", Locale.getDefault())

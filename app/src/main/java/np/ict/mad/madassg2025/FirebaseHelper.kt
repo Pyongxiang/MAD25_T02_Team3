@@ -428,21 +428,27 @@ class FirebaseHelper {
 
             db.collection("chat_rooms").document(chatId).collection("messages").add(messageData)
                 .addOnSuccessListener {
-                    // Update room metadata
                     val roomRef = db.collection("chat_rooms").document(chatId)
                     db.runTransaction { transaction ->
                         val snapshot = transaction.get(roomRef)
                         val participants = snapshot.get("participants") as? List<String> ?: emptyList()
 
-                        // Increment unread count for others
+                        // 1. Increment unread count for others
                         participants.forEach { userId ->
                             if (userId != myId) {
                                 transaction.update(roomRef, "unreadCounts.$userId", FieldValue.increment(1))
                             }
                         }
 
+                        // 2. Update room text and time
                         transaction.update(roomRef, "lastMessage", text)
                         transaction.update(roomRef, "timestamp", FieldValue.serverTimestamp())
+
+                        // --- ✅ ADD THIS LINE HERE ---
+                        // This removes you from the 'hiddenFrom' list so the chat reappears for you
+                        transaction.update(roomRef, "hiddenFrom", FieldValue.arrayRemove(myId))
+                        // -----------------------------
+
                     }.addOnSuccessListener { onSuccess() }
                 }
         }, onFailure = {})
@@ -456,15 +462,99 @@ class FirebaseHelper {
 
     // listen for messages in the chat room
     fun listenToMessages(chatId: String, onUpdate: (List<ChatMessage>) -> Unit) {
-        db.collection("chat_rooms").document(chatId)
-            .collection("messages")
-            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.ASCENDING)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) return@addSnapshotListener
+        val myId = auth.currentUser?.uid ?: return
 
-                val msgs = snapshot?.documents?.mapNotNull { it.toObject(ChatMessage::class.java) } ?: emptyList()
-                onUpdate(msgs)
+        // First, get your "clearedAt" time for this room
+        db.collection("chat_rooms").document(chatId).get().addOnSuccessListener { doc ->
+            val clearedAtMap = doc.get("clearedAt") as? Map<String, Long> ?: emptyMap()
+            val myClearedAt = clearedAtMap[myId] ?: 0L
+
+            // Only listen for messages newer than your last "deletion"
+            db.collection("chat_rooms").document(chatId)
+                .collection("messages")
+                .whereGreaterThan("timestamp", myClearedAt)
+                .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.ASCENDING)
+                .addSnapshotListener { snapshot, _ ->
+                    val msgs = snapshot?.documents?.mapNotNull { it.toObject(ChatMessage::class.java) } ?: emptyList()
+                    onUpdate(msgs)
+                }
+        }
+    }
+
+    fun deleteChatForMe(chatId: String) {
+        val myId = auth.currentUser?.uid ?: return
+        val now = System.currentTimeMillis()
+
+        db.collection("chat_rooms").document(chatId).update(
+            "hiddenFrom", FieldValue.arrayUnion(myId),
+            "clearedAt.$myId", now,
+            "unreadCounts.$myId", 0
+        )
+    }
+
+    fun restoreChatVisibility(chatId: String, onSuccess: () -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("chat_rooms").document(chatId)
+            .update("hiddenFrom", FieldValue.arrayRemove(myId))
+            .addOnSuccessListener { onSuccess() }
+    }
+
+    // --- CREATE GROUP ---
+    fun createGroupChat(groupName: String, memberUids: List<String>, onSuccess: () -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        val chatId = db.collection("chat_rooms").document().id // Generate random ID
+
+        val allParticipants = memberUids + myId
+        val unreadMap = allParticipants.associateWith { 0 }
+
+        val groupData = hashMapOf(
+            "chatId" to chatId,
+            "isGroup" to true,
+            "groupName" to groupName,
+            "groupLeaderId" to myId,
+            "participants" to allParticipants,
+            "unreadCounts" to unreadMap,
+            "lastMessage" to "Group created!",
+            "timestamp" to FieldValue.serverTimestamp()
+        )
+
+        db.collection("chat_rooms").document(chatId).set(groupData)
+            .addOnSuccessListener { onSuccess() }
+    }
+
+    // --- ADD MEMBER
+    fun addMemberToGroup(chatId: String, newUser: UserAccount) {
+        val roomRef = db.collection("chat_rooms").document(chatId)
+        db.runTransaction { transaction ->
+            transaction.update(roomRef, "participants", FieldValue.arrayUnion(newUser.uid))
+            transaction.update(roomRef, "unreadCounts.${newUser.uid}", 0)
+        }
+    }
+
+    // --- REMOVE MEMBER
+    fun removeMemberFromGroup(chatId: String, userIdToRemove: String) {
+        val roomRef = db.collection("chat_rooms").document(chatId)
+        db.runTransaction { transaction ->
+            transaction.update(roomRef, "participants", FieldValue.arrayRemove(userIdToRemove))
+            // Optionally remove their unread count field too
+        }
+    }
+
+
+    fun getGroupParticipants(chatId: String, onUpdate: (List<UserAccount>) -> Unit) {
+        db.collection("chat_rooms").document(chatId).get().addOnSuccessListener { doc ->
+            val uids = doc.get("participants") as? List<String> ?: emptyList()
+
+            if (uids.isNotEmpty()) {
+                db.collection("users")
+                    .whereIn("uid", uids)
+                    .get()
+                    .addOnSuccessListener { querySnapshot ->
+                        val users = querySnapshot.documents.mapNotNull { it.toObject(UserAccount::class.java) }
+                        onUpdate(users)
+                    }
             }
+        }
     }
 }
 

@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,115 +33,135 @@ class MessagePage : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // -- UI STATE --
             var chatSearchQuery by remember { mutableStateOf("") }
             val chatRooms = remember { mutableStateListOf<Map<String, Any>>() }
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
-            // -- REAL-TIME LISTENER --
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToChatRooms { rooms ->
+                    val visibleRooms = rooms.filter { room ->
+                        val hiddenFrom = room["hiddenFrom"] as? List<String> ?: emptyList()
+                        !hiddenFrom.contains(myId)
+                    }
                     chatRooms.clear()
-                    chatRooms.addAll(rooms)
+                    chatRooms.addAll(visibleRooms)
                 }
             }
 
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) {
-                Column(
+            // --- USE SCAFFOLD FOR THE FLOATING ACTION BUTTON ---
+            Scaffold(
+                floatingActionButton = {
+                    FloatingActionButton(
+                        onClick = {
+                            // Navigate to Group Creation Activity
+                            val intent = Intent(this@MessagePage, CreateGroupActivity::class.java)
+                            startActivity(intent)
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
+                        shape = CircleShape
+                    ) {
+                        // Using GroupAdd icon to signify group creation
+                        Icon(Icons.Default.GroupAdd, contentDescription = "Create Group Chat")
+                    }
+                }
+            ) { paddingValues ->
+                Surface(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(paddingValues),
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    // --- HEADER SECTION ---
-                    Row(
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .fillMaxSize()
+                            .padding(16.dp)
                     ) {
-                        IconButton(onClick = { finish() }) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        Column {
-                            Text(
-                                text = "Buddy Chats",
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "Weather Buddies",
-                                fontSize = 12.sp,
-                                color = Color.Gray
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // --- SEARCH BAR ---
-                    OutlinedTextField(
-                        value = chatSearchQuery,
-                        onValueChange = { chatSearchQuery = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Search conversations...") },
-                        leadingIcon = { Icon(Icons.Default.Search, null) },
-                        shape = RoundedCornerShape(16.dp),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // --- CHAT LIST ---
-                    if (chatRooms.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No buddies yet. Accept a request to start chatting!", color = Color.Gray)
-                        }
-                    } else {
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxSize()
+                        // --- HEADER SECTION ---
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val filteredRooms = if (chatSearchQuery.isEmpty()) chatRooms
-                            else chatRooms.filter { room ->
-                                val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
-                                usernames.values.any { it.contains(chatSearchQuery, ignoreCase = true) }
+                            IconButton(onClick = { finish() }) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(text = "Buddy Chats", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(text = "Weather Buddies", fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
 
-                            items(filteredRooms) { room ->
-                                val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
-                                val friendName = usernames.entries.find { it.key != myId }?.value ?: "Unknown"
-                                val lastMsg = room["lastMessage"]?.toString() ?: "No messages"
-                                val chatId = room["chatId"]?.toString() ?: ""
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                                // --- UNREAD COUNT LOGIC ---
-                                val unreadMap = room["unreadCounts"] as? Map<String, Long> ?: emptyMap()
-                                val count = unreadMap[myId]?.toInt() ?: 0
+                        // --- SEARCH BAR ---
+                        OutlinedTextField(
+                            value = chatSearchQuery,
+                            onValueChange = { chatSearchQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = { Text("Search conversations...") },
+                            leadingIcon = { Icon(Icons.Default.Search, null) },
+                            shape = RoundedCornerShape(16.dp),
+                            singleLine = true
+                        )
 
-                                ChatBuddyCard(
-                                    name = friendName,
-                                    lastMessage = lastMsg,
-                                    unreadCount = count,
-                                    onClick = {
-                                        // Reset count in DB immediately on click
-                                        firebaseHelper.markChatAsRead(chatId)
+                        Spacer(modifier = Modifier.height(24.dp))
 
-                                        val intent = Intent(this@MessagePage, ChatRoomActivity::class.java)
-                                        intent.putExtra("CHAT_ID", chatId)
-                                        intent.putExtra("FRIEND_NAME", friendName)
-                                        startActivity(intent)
+                        // --- CHAT LIST ---
+                        if (chatRooms.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No buddies yet. Accept a request to start chatting!", color = Color.Gray)
+                            }
+                        } else {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                val filteredRooms = if (chatSearchQuery.isEmpty()) chatRooms
+                                else chatRooms.filter { room ->
+                                    val isGroup = room["isGroup"] as? Boolean ?: false
+                                    if (isGroup) {
+                                        (room["groupName"] as? String)?.contains(chatSearchQuery, ignoreCase = true) == true
+                                    } else {
+                                        val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
+                                        usernames.values.any { it.contains(chatSearchQuery, ignoreCase = true) }
                                     }
-                                )
+                                }
+
+                                items(filteredRooms) { room ->
+                                    val isGroup = room["isGroup"] as? Boolean ?: false
+                                    val chatId = room["chatId"]?.toString() ?: ""
+                                    val lastMsg = room["lastMessage"]?.toString() ?: "No messages"
+
+                                    // Extract unread count
+                                    val unreadMap = room["unreadCounts"] as? Map<String, Long> ?: emptyMap()
+                                    val count = unreadMap[myId]?.toInt() ?: 0
+
+                                    // Resolve Display Name
+                                    val displayName = if (isGroup) {
+                                        room["groupName"]?.toString() ?: "Group Chat"
+                                    } else {
+                                        val usernames = room["usernames"] as? Map<String, String> ?: emptyMap()
+                                        usernames.entries.find { it.key != myId }?.value ?: "Unknown"
+                                    }
+
+                                    ChatBuddyCard(
+                                        name = displayName,
+                                        lastMessage = lastMsg,
+                                        unreadCount = count,
+                                        isGroup = isGroup, // Added parameter to Card
+                                        onClick = {
+                                            firebaseHelper.markChatAsRead(chatId)
+                                            val intent = Intent(this@MessagePage, ChatRoomActivity::class.java)
+                                            intent.putExtra("CHAT_ID", chatId)
+                                            intent.putExtra("FRIEND_NAME", displayName)
+                                            intent.putExtra("IS_GROUP", isGroup)
+                                            startActivity(intent)
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -150,7 +172,7 @@ class MessagePage : ComponentActivity() {
 }
 
 @Composable
-fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, onClick: () -> Unit) {
+fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, isGroup: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -164,11 +186,11 @@ fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, onClick: 
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar
+            // Avatar (Group Icon if it's a group, Initial if it's a person)
             Surface(
                 modifier = Modifier.size(50.dp),
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary
+                color = if (isGroup) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(name.take(1).uppercase(), color = Color.White, fontWeight = FontWeight.Bold)
@@ -177,7 +199,6 @@ fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, onClick: 
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Info
             Column(modifier = Modifier.weight(1f)) {
                 Text(name, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Text(
@@ -190,22 +211,12 @@ fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, onClick: 
                 )
             }
 
-            // --- UNREAD BADGE ---
             if (unreadCount > 0) {
                 Box(
-                    modifier = Modifier
-                        .padding(start = 8.dp)
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.padding(start = 8.dp).size(22.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (unreadCount > 9) "9+" else unreadCount.toString(),
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text(text = if (unreadCount > 9) "9+" else unreadCount.toString(), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
