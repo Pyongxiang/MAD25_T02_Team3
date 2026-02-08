@@ -444,10 +444,8 @@ class FirebaseHelper {
                         transaction.update(roomRef, "lastMessage", text)
                         transaction.update(roomRef, "timestamp", FieldValue.serverTimestamp())
 
-                        // --- ✅ ADD THIS LINE HERE ---
-                        // This removes you from the 'hiddenFrom' list so the chat reappears for you
                         transaction.update(roomRef, "hiddenFrom", FieldValue.arrayRemove(myId))
-                        // -----------------------------
+
 
                     }.addOnSuccessListener { onSuccess() }
                 }
@@ -555,6 +553,21 @@ class FirebaseHelper {
                     }
             }
         }
+    }
+
+    // listen to changes for the groupchat
+    fun listenToRoomMetadata(chatId: String, onUpdate: (Map<String, Any>) -> Unit) {
+        db.collection("chat_rooms").document(chatId)
+            .addSnapshotListener { snapshot, _ ->
+                snapshot?.data?.let { onUpdate(it) }
+            }
+    }
+
+    // update the group name in Firestore
+    fun updateGroupName(chatId: String, newName: String, onSuccess: () -> Unit) {
+        db.collection("chat_rooms").document(chatId)
+            .update("groupName", newName)
+            .addOnSuccessListener { onSuccess() }
     }
 }
 
