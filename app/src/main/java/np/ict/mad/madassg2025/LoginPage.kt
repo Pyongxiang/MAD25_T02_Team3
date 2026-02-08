@@ -2,6 +2,7 @@ package np.ict.mad.madassg2025
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,7 +28,9 @@ fun LoginPage() {
     val context = LocalContext.current
 
     // local storage to handle remember me
-    val prefs = remember { context.getSharedPreferences("UserPrefs", android.content.Context.MODE_PRIVATE) }
+    val prefs = remember {
+        context.getSharedPreferences("UserPrefs", android.content.Context.MODE_PRIVATE)
+    }
 
     // -- VARIABLES --
     var username by remember { mutableStateOf("") }
@@ -52,14 +56,24 @@ fun LoginPage() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+
+            // ✅ LOGO (added above Welcome Back)
+            Image(
+                painter = painterResource(id = R.drawable.weather_buddies_logo),
+                contentDescription = "Weather Buddies Logo",
+                modifier = Modifier.size(180.dp)
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
             Text(
-                text = if (isLoginMode) "Weather Buddies" else "Create Account",
+                text = if (isLoginMode) "Welcome Back" else "Create Account",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             if (!isLoginMode) {
                 OutlinedTextField(
@@ -140,7 +154,11 @@ fun LoginPage() {
 
             if (errorMessage != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(text = errorMessage!!, color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                Text(
+                    text = errorMessage!!,
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 14.sp
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -151,7 +169,9 @@ fun LoginPage() {
                     errorMessage = null
 
                     if (isLoginMode) {
-                        firebaseHelper.signIn(email, password,
+                        firebaseHelper.signIn(
+                            email,
+                            password,
                             onSuccess = {
                                 isLoading = false
                                 prefs.edit().putBoolean("remember", rememberMe).apply()
@@ -188,11 +208,16 @@ fun LoginPage() {
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
                 enabled = !isLoading
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(24.dp)
+                    )
                 } else {
                     Text(text = if (isLoginMode) "Login" else "Sign Up")
                 }
@@ -201,7 +226,10 @@ fun LoginPage() {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = if (isLoginMode) "Don't have an account? Sign Up" else "Already have an account? Login",
+                text = if (isLoginMode)
+                    "Don't have an account? Sign Up"
+                else
+                    "Already have an account? Login",
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.clickable {
                     isLoginMode = !isLoginMode
