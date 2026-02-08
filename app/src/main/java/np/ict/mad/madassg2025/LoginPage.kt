@@ -44,22 +44,6 @@ fun LoginPage() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        // --- HOME BYPASS (UPDATED WITH FLAGS) ---
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Button(onClick = {
-                val intent = Intent(context, HomePage::class.java)
-                // Clear stack even for bypass
-                intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                context.startActivity(intent)
-            }) {
-                Text("Home")
-            }
-        }
 
         Column(
             modifier = Modifier
@@ -181,7 +165,6 @@ fun LoginPage() {
                                 isLoading = false
                                 prefs.edit().putBoolean("remember", rememberMe).apply()
 
-                                // === UPDATED NAVIGATION WITH FLAGS ===
                                 val intent = Intent(context, HomePage::class.java)
                                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 context.startActivity(intent)
@@ -201,7 +184,6 @@ fun LoginPage() {
                             onSuccess = {
                                 isLoading = false
 
-                                // === UPDATED NAVIGATION WITH FLAGS ===
                                 val intent = Intent(context, HomePage::class.java)
                                 intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                                 context.startActivity(intent)
