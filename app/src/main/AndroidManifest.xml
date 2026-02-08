@@ -64,5 +64,11 @@
             android:exported="false" />
 
 
+        <activity
+            android:name=".ChatRoomActivity"
+            android:exported="false" />
+
+
+
     </application>
 </manifest>

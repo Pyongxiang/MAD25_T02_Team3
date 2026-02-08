@@ -8,6 +8,14 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.ListenerRegistration
 
+data class ChatMessage(
+    val senderId: String = "",
+    val senderName: String = "",
+    val text: String = "",
+    val timestamp: Long = 0L,
+    val messageType: String = "text"
+)
+
 class FirebaseHelper {
     // getting the "keys" to Firebase's authentication system
     private val auth: FirebaseAuth = Firebase.auth
@@ -159,44 +167,26 @@ class FirebaseHelper {
     // Send a friend request
     fun sendFriendRequest(targetUser: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val currentUserId = auth.currentUser?.uid ?: return
-
-        // Create the unique ID based on the sender and receiver
         val requestId = "${currentUserId}_${targetUser.uid}"
 
-        // STEP 1: Check if this specific request already exists
-        db.collection("friend_requests").document(requestId).get()
-            .addOnSuccessListener { document ->
-                if (document.exists()) {
-                    // If the document exists, a request is already pending
-                    onFailure("Request already sent to this user!")
-                } else {
-                    // STEP 2: The request is new, so we fetch your profile info to "stamp" the request
-                    getUserProfile(onSuccess = { profile ->
-                        val myUsername = profile?.get("username")?.toString() ?: "Someone"
-                        val myEmail = profile?.get("email")?.toString() ?: ""
-
-                        val requestData = hashMapOf(
-                            "fromId" to currentUserId,
-                            "fromUsername" to myUsername,
-                            "fromEmail" to myEmail,
-                            "toId" to targetUser.uid,
-                            "status" to "pending"
-                        )
-
-                        // STEP 3: Write the request to the 'friend_requests' collection
-                        db.collection("friend_requests").document(requestId)
-                            .set(requestData)
-                            .addOnSuccessListener { onSuccess() }
-                            .addOnFailureListener { onFailure(it.message ?: "Failed to send request") }
-
-                    }, onFailure = {
-                        onFailure("Could not fetch your profile to send request")
-                    })
-                }
+        db.collection("friend_requests").document(requestId).get().addOnSuccessListener { document ->
+            if (document.exists()) {
+                onFailure("Request already sent!")
+            } else {
+                getUserProfile(onSuccess = { profile ->
+                    val myUsername = profile?.get("username")?.toString() ?: "Someone"
+                    val requestData = hashMapOf(
+                        "fromId" to currentUserId,
+                        "fromUsername" to myUsername,
+                        "fromEmail" to (getCurrentUserEmail() ?: ""),
+                        "toId" to targetUser.uid,
+                        "status" to "pending"
+                    )
+                    db.collection("friend_requests").document(requestId).set(requestData)
+                        .addOnSuccessListener { onSuccess() }
+                }, onFailure = { onFailure("Profile error") })
             }
-            .addOnFailureListener { e ->
-                onFailure("Database error: ${e.message}")
-            }
+        }
     }
 
     fun cancelFriendRequest(targetUserId: String, onSuccess: () -> Unit) {
@@ -207,33 +197,44 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
+
     // Accept friend request
     fun acceptFriendRequest(friend: UserAccount, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
 
         getUserProfile(onSuccess = { profile ->
             val myUsername = profile?.get("username")?.toString() ?: "User"
-            val myEmail = profile?.get("email")?.toString() ?: ""
-
             val batch = db.batch()
 
-            // 1. Add friend to MY list
+            // 1. Add to MY friends list
             val myFriendRef = db.collection("users").document(myId).collection("friends").document(friend.uid)
             batch.set(myFriendRef, friend)
 
-            // 2. Add ME to THEIR list
+            // 2. Add ME to THEIR friends list
             val theirFriendRef = db.collection("users").document(friend.uid).collection("friends").document(myId)
-            batch.set(theirFriendRef, UserAccount(uid = myId, username = myUsername, email = myEmail))
+            batch.set(theirFriendRef, UserAccount(uid = myId, username = myUsername, email = getCurrentUserEmail() ?: ""))
 
-            // 3. Delete the request (Note: requestId is senderId_receiverId)
+            // 3. Delete the pending request
             val requestRef = db.collection("friend_requests").document("${friend.uid}_$myId")
             batch.delete(requestRef)
 
-            batch.commit()
-                .addOnSuccessListener { onSuccess() }
-                .addOnFailureListener { onFailure(it.message ?: "Failed") }
+            // 4. Initialize Chat Room
+            val chatId = getChatId(myId, friend.uid)
+            val chatRoomRef = db.collection("chat_rooms").document(chatId)
+            val chatRoomData = hashMapOf(
+                "chatId" to chatId,
+                "participants" to listOf(myId, friend.uid),
+                "usernames" to mapOf(myId to myUsername, friend.uid to friend.username),
+                "lastMessage" to "You are now buddies! Say hi.",
+                "timestamp" to FieldValue.serverTimestamp()
+            )
+            batch.set(chatRoomRef, chatRoomData)
+
+            batch.commit().addOnSuccessListener { onSuccess() }.addOnFailureListener { onFailure(it.message ?: "Failed") }
         }, onFailure = { onFailure("Profile error") })
     }
+
+
 
     fun denyFriendRequest(senderId: String, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
@@ -394,6 +395,53 @@ class FirebaseHelper {
             .delete()
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { onFailure(it.message ?: "Failed to remove favourite") }
+    }
+
+    // chat functions
+    fun getChatId(userId1: String, userId2: String): String {
+        return if (userId1 < userId2) "${userId1}_${userId2}" else "${userId2}_${userId1}"
+    }
+
+    fun listenToChatRooms(onUpdate: (List<Map<String, Any>>) -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        db.collection("chat_rooms")
+            .whereArrayContains("participants", myId)
+            .addSnapshotListener { snapshot, _ ->
+                val rooms = snapshot?.documents?.mapNotNull { it.data } ?: emptyList()
+                onUpdate(rooms)
+            }
+    }
+
+    // function to send message in the chat room
+    fun sendMessage(chatId: String, text: String, onSuccess: () -> Unit) {
+        val myId = auth.currentUser?.uid ?: return
+        getUserProfile(onSuccess = { profile ->
+            val myName = profile?.get("username")?.toString() ?: "Unknown"
+            val messageData = hashMapOf(
+                "senderId" to myId,
+                "senderName" to myName,
+                "text" to text,
+                "timestamp" to System.currentTimeMillis()
+            )
+            db.collection("chat_rooms").document(chatId).collection("messages").add(messageData)
+                .addOnSuccessListener {
+                    db.collection("chat_rooms").document(chatId).update("lastMessage", text, "timestamp", FieldValue.serverTimestamp())
+                    onSuccess()
+                }
+        }, onFailure = {})
+    }
+
+    // listen for messages in the chat room
+    fun listenToMessages(chatId: String, onUpdate: (List<ChatMessage>) -> Unit) {
+        db.collection("chat_rooms").document(chatId)
+            .collection("messages")
+            .orderBy("timestamp", com.google.firebase.firestore.Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) return@addSnapshotListener
+
+                val msgs = snapshot?.documents?.mapNotNull { it.toObject(ChatMessage::class.java) } ?: emptyList()
+                onUpdate(msgs)
+            }
     }
 }
 
