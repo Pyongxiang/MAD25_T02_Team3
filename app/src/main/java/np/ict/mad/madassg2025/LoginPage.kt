@@ -25,10 +25,10 @@ import androidx.compose.ui.unit.sp
 fun LoginPage() {
     val context = LocalContext.current
 
-    // Local Storage to handle "Remember Me"
+    // local storage to handle remember me
     val prefs = remember { context.getSharedPreferences("UserPrefs", android.content.Context.MODE_PRIVATE) }
 
-    // -- STATE VARIABLES --
+    // -- VARIABLES --
     var username by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -52,9 +52,8 @@ fun LoginPage() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // --- HEADER ---
             Text(
-                text = if (isLoginMode) "Welcome Back" else "Create Account",
+                text = if (isLoginMode) "Weather Buddies" else "Create Account",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -153,7 +152,6 @@ fun LoginPage() {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- ACTION BUTTON ---
             Button(
                 onClick = {
                     isLoading = true

@@ -9,7 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -29,12 +29,10 @@ class CreateGroupActivity : ComponentActivity() {
             var groupName by remember { mutableStateOf("") }
             val friendsList = remember { mutableStateListOf<UserAccount>() }
 
-            // Tracks selected friend IDs: Map<UID, IsSelected>
             val selectedMembers = remember { mutableStateMapOf<String, Boolean>() }
 
-            val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
-            // Load friends list
+            // load friends list
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToFriendsList { friends ->
                     friendsList.clear()
@@ -44,17 +42,16 @@ class CreateGroupActivity : ComponentActivity() {
 
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    // Header
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { finish() }) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                         Text("New Group Chat", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Group Name Input
+                    // input group name
                     OutlinedTextField(
                         value = groupName,
                         onValueChange = { groupName = it },
@@ -68,7 +65,6 @@ class CreateGroupActivity : ComponentActivity() {
                     Text("Select Friends", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Friends Selection List
                     LazyColumn(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -100,7 +96,7 @@ class CreateGroupActivity : ComponentActivity() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Create Button
+                    // create Button
                     Button(
                         onClick = {
                             val memberUids = selectedMembers.filter { it.value }.keys.toList()
@@ -112,7 +108,7 @@ class CreateGroupActivity : ComponentActivity() {
                             } else {
                                 firebaseHelper.createGroupChat(groupName, memberUids) {
                                     Toast.makeText(context, "Group Created!", Toast.LENGTH_SHORT).show()
-                                    finish() // Close screen after success
+                                    finish()
                                 }
                             }
                         },

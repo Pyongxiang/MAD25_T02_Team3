@@ -12,8 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -48,12 +47,10 @@ class MessagePage : ComponentActivity() {
                 }
             }
 
-            // --- USE SCAFFOLD FOR THE FLOATING ACTION BUTTON ---
             Scaffold(
                 floatingActionButton = {
                     FloatingActionButton(
                         onClick = {
-                            // Navigate to Group Creation Activity
                             val intent = Intent(this@MessagePage, CreateGroupActivity::class.java)
                             startActivity(intent)
                         },
@@ -61,7 +58,6 @@ class MessagePage : ComponentActivity() {
                         contentColor = Color.White,
                         shape = CircleShape
                     ) {
-                        // Using GroupAdd icon to signify group creation
                         Icon(Icons.Default.GroupAdd, contentDescription = "Create Group Chat")
                     }
                 }
@@ -77,7 +73,6 @@ class MessagePage : ComponentActivity() {
                             .fillMaxSize()
                             .padding(16.dp)
                     ) {
-                        // --- HEADER SECTION ---
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -85,7 +80,7 @@ class MessagePage : ComponentActivity() {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             IconButton(onClick = { finish() }) {
-                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
                             }
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
@@ -96,7 +91,6 @@ class MessagePage : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // --- SEARCH BAR ---
                         OutlinedTextField(
                             value = chatSearchQuery,
                             onValueChange = { chatSearchQuery = it },
@@ -109,7 +103,6 @@ class MessagePage : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // --- CHAT LIST ---
                         if (chatRooms.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text("No buddies yet. Accept a request to start chatting!", color = Color.Gray)
@@ -151,7 +144,7 @@ class MessagePage : ComponentActivity() {
                                         name = displayName,
                                         lastMessage = lastMsg,
                                         unreadCount = count,
-                                        isGroup = isGroup, // Added parameter to Card
+                                        isGroup = isGroup,
                                         onClick = {
                                             firebaseHelper.markChatAsRead(chatId)
                                             val intent = Intent(this@MessagePage, ChatRoomActivity::class.java)
@@ -186,7 +179,6 @@ fun ChatBuddyCard(name: String, lastMessage: String, unreadCount: Int, isGroup: 
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Avatar (Group Icon if it's a group, Initial if it's a person)
             Surface(
                 modifier = Modifier.size(50.dp),
                 shape = CircleShape,

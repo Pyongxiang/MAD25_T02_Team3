@@ -50,25 +50,21 @@ class FirebaseHelper {
         if (username.isBlank()) { onFailure("Username cannot be empty"); return }
         if (password.length < 6) { onFailure("Password must be at least 6 characters"); return }
 
-        // This is the "Normalized" version that blocks others
-        // e.g., "aDmin" becomes "admin"
         val normalizedUsername = username.lowercase().trim()
 
-        // STEP 1: Check if the character string is already "taken"
+        // check if username is already taken
         db.collection("users")
             .whereEqualTo("username_lowercase", normalizedUsername)
             .get()
             .addOnSuccessListener { documents ->
                 if (!documents.isEmpty) {
-                    // If "admin" exists, this blocks "Admin", "ADMIN", "aDmin", etc.
                     onFailure("The username '$username' is unavailable.")
                 } else {
-                    // STEP 2: The name is free! Create the Auth account
+                    // create account
                     auth.createUserWithEmailAndPassword(email, password)
                         .addOnSuccessListener { result ->
                             val userId = result.user?.uid
                             if (userId != null) {
-                                // STEP 3: Save the profile with both versions
                                 val userProfile = hashMapOf(
                                     "username" to username,
                                     "username_lowercase" to normalizedUsername,
@@ -110,11 +106,9 @@ class FirebaseHelper {
         // Call Firebase to sign in
         auth.signInWithEmailAndPassword(email, password)
             .addOnSuccessListener {
-                // Success! User is logged in
                 onSuccess()
             }
             .addOnFailureListener { exception ->
-                // Failed! Show error message
                 onFailure(exception.message ?: "Sign in failed")
             }
     }
@@ -140,14 +134,11 @@ class FirebaseHelper {
                 onSuccess()
             }
             .addOnFailureListener { exception ->
-                // Note: Firebase often returns a success message even if the email doesn't exist
-                // for security reasons (to prevent user enumeration). We will trust the default0
-                // success/failure outcome here.
                 onFailure(exception.message ?: "Failed to send reset email.")
             }
     }
 
-    // Get userprofile for friends page
+    // Get user profile for friends page
     fun getUserProfile(onSuccess: (Map<String, Any>?) -> Unit, onFailure: (String) -> Unit) {
         val userId = auth.currentUser?.uid
         if (userId != null) {
@@ -189,6 +180,7 @@ class FirebaseHelper {
         }
     }
 
+    // cancel friend request
     fun cancelFriendRequest(targetUserId: String, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         val requestId = "${myId}_$targetUserId"
@@ -234,8 +226,7 @@ class FirebaseHelper {
         }, onFailure = { onFailure("Profile error") })
     }
 
-
-
+    // deny friend request
     fun denyFriendRequest(senderId: String, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("friend_requests").document("${senderId}_$myId")
@@ -243,6 +234,7 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
+    // remove friend
     fun removeFriend(friendId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         val batch = db.batch()
@@ -284,13 +276,13 @@ class FirebaseHelper {
             }
     }
 
+    // retrieve sent friend requests
     fun listenToSentRequests(onUpdate: (List<String>) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("friend_requests")
             .whereEqualTo("fromId", myId)
             .whereEqualTo("status", "pending")
             .addSnapshotListener { snapshot, _ ->
-                // We only need the list of UIDs we sent requests to
                 val sentToIds = snapshot?.documents?.mapNotNull { it.getString("toId") } ?: emptyList()
                 onUpdate(sentToIds)
             }
@@ -398,10 +390,13 @@ class FirebaseHelper {
     }
 
     // chat functions
+
+    // get chat room id
     fun getChatId(userId1: String, userId2: String): String {
         return if (userId1 < userId2) "${userId1}_${userId2}" else "${userId2}_${userId1}"
     }
 
+    // retrieve chat rooms
     fun listenToChatRooms(onUpdate: (List<Map<String, Any>>) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("chat_rooms")
@@ -443,15 +438,13 @@ class FirebaseHelper {
                         // 2. Update room text and time
                         transaction.update(roomRef, "lastMessage", text)
                         transaction.update(roomRef, "timestamp", FieldValue.serverTimestamp())
-
                         transaction.update(roomRef, "hiddenFrom", FieldValue.arrayRemove(myId))
-
-
                     }.addOnSuccessListener { onSuccess() }
                 }
         }, onFailure = {})
     }
 
+    // to update unread messages
     fun markChatAsRead(chatId: String) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("chat_rooms").document(chatId)
@@ -462,12 +455,10 @@ class FirebaseHelper {
     fun listenToMessages(chatId: String, onUpdate: (List<ChatMessage>) -> Unit) {
         val myId = auth.currentUser?.uid ?: return
 
-        // First, get your "clearedAt" time for this room
         db.collection("chat_rooms").document(chatId).get().addOnSuccessListener { doc ->
             val clearedAtMap = doc.get("clearedAt") as? Map<String, Long> ?: emptyMap()
             val myClearedAt = clearedAtMap[myId] ?: 0L
 
-            // Only listen for messages newer than your last "deletion"
             db.collection("chat_rooms").document(chatId)
                 .collection("messages")
                 .whereGreaterThan("timestamp", myClearedAt)
@@ -479,6 +470,7 @@ class FirebaseHelper {
         }
     }
 
+    // deleting chat for user
     fun deleteChatForMe(chatId: String) {
         val myId = auth.currentUser?.uid ?: return
         val now = System.currentTimeMillis()
@@ -490,6 +482,7 @@ class FirebaseHelper {
         )
     }
 
+    // restore chat from deleted chat
     fun restoreChatVisibility(chatId: String, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         db.collection("chat_rooms").document(chatId)
@@ -497,7 +490,7 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
-    // --- CREATE GROUP ---
+    // creating group chat
     fun createGroupChat(groupName: String, memberUids: List<String>, onSuccess: () -> Unit) {
         val myId = auth.currentUser?.uid ?: return
         val chatId = db.collection("chat_rooms").document().id // Generate random ID
@@ -520,7 +513,7 @@ class FirebaseHelper {
             .addOnSuccessListener { onSuccess() }
     }
 
-    // --- ADD MEMBER
+    // add friends to group
     fun addMemberToGroup(chatId: String, newUser: UserAccount) {
         val roomRef = db.collection("chat_rooms").document(chatId)
         db.runTransaction { transaction ->
@@ -529,16 +522,15 @@ class FirebaseHelper {
         }
     }
 
-    // --- REMOVE MEMBER
+    // remove member from group
     fun removeMemberFromGroup(chatId: String, userIdToRemove: String) {
         val roomRef = db.collection("chat_rooms").document(chatId)
         db.runTransaction { transaction ->
             transaction.update(roomRef, "participants", FieldValue.arrayRemove(userIdToRemove))
-            // Optionally remove their unread count field too
         }
     }
 
-
+    // retrieve users in the group
     fun getGroupParticipants(chatId: String, onUpdate: (List<UserAccount>) -> Unit) {
         db.collection("chat_rooms").document(chatId).get().addOnSuccessListener { doc ->
             val uids = doc.get("participants") as? List<String> ?: emptyList()

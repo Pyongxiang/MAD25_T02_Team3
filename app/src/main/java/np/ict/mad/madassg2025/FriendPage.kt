@@ -45,7 +45,6 @@ class FriendPage : ComponentActivity() {
             val currentFriends = remember { mutableStateListOf<UserAccount>() }
             val sentRequestIds = remember { mutableStateListOf<String>() }
 
-            // --- DIALOG STATES ---
             var showRemoveDialog by remember { mutableStateOf(false) }
             var userToRemove by remember { mutableStateOf<UserAccount?>(null) }
             var showProfileDialog by remember { mutableStateOf(false) }
@@ -56,7 +55,6 @@ class FriendPage : ComponentActivity() {
 
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
-            // 1. Initial Data Listeners
             LaunchedEffect(Unit) {
                 firebaseHelper.listenToFriendRequests { pendingRequests.clear(); pendingRequests.addAll(it) }
                 firebaseHelper.listenToFriendsList { currentFriends.clear(); currentFriends.addAll(it) }
@@ -69,7 +67,6 @@ class FriendPage : ComponentActivity() {
                 }
             }
 
-            // 2. Search Logic Trigger
             LaunchedEffect(searchQuery) {
                 val query = searchQuery.trim()
                 if (query.length >= 3) {
@@ -82,7 +79,6 @@ class FriendPage : ComponentActivity() {
                 }
             }
 
-            // --- PROFILE DETAIL DIALOG ---
             if (showProfileDialog && selectedUserForProfile != null) {
                 LaunchedEffect(selectedUserForProfile) {
                     firebaseHelper.listenToFavourites(selectedUserForProfile!!.uid, { favs ->
@@ -143,7 +139,7 @@ class FriendPage : ComponentActivity() {
                 )
             }
 
-            // --- REMOVE FRIEND DIALOG ---
+            // remove friend
             if (showRemoveDialog && userToRemove != null) {
                 AlertDialog(
                     onDismissRequest = { showRemoveDialog = false },

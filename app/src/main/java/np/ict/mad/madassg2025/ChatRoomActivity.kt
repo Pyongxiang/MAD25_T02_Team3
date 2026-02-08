@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,19 +44,22 @@ class ChatRoomActivity : ComponentActivity() {
             val messages = remember { mutableStateListOf<ChatMessage>() }
             val myId = firebaseHelper.getCurrentUser()?.uid ?: ""
 
-            // --- UI STATES ---
             var showMenu by remember { mutableStateOf(false) }
             var showDeleteDialog by remember { mutableStateOf(false) }
             var showGroupSummary by remember { mutableStateOf(false) }
             var showEditNameDialog by remember { mutableStateOf(false) }
-            var showAddMemberDialog by remember { mutableStateOf(false) } // NEW
+            var showAddMemberDialog by remember { mutableStateOf(false) }
 
             var newNameInput by remember { mutableStateOf(currentGroupName) }
             val participants = remember { mutableStateListOf<UserAccount>() }
-            val myFriends = remember { mutableStateListOf<UserAccount>() } // NEW
+            val myFriends = remember { mutableStateListOf<UserAccount>() }
+
             var leaderId by remember { mutableStateOf("") }
 
-            // --- REAL-TIME UPDATES ---
+            val isMeAdmin by remember {
+                derivedStateOf { myId == leaderId }
+            }
+
             LaunchedEffect(chatId) {
                 if (chatId.isNotEmpty()) {
                     firebaseHelper.markChatAsRead(chatId)
@@ -67,6 +72,7 @@ class ChatRoomActivity : ComponentActivity() {
                         firebaseHelper.listenToRoomMetadata(chatId) { data ->
                             currentGroupName = data["groupName"] as? String ?: currentGroupName
                             leaderId = data["groupLeaderId"] as? String ?: ""
+                            newNameInput = currentGroupName
                         }
 
                         firebaseHelper.getGroupParticipants(chatId) { list ->
@@ -74,7 +80,6 @@ class ChatRoomActivity : ComponentActivity() {
                             participants.addAll(list)
                         }
 
-                        // Load friends to check who can be added
                         firebaseHelper.listenToFriendsList { friends ->
                             myFriends.clear()
                             myFriends.addAll(friends)
@@ -83,9 +88,8 @@ class ChatRoomActivity : ComponentActivity() {
                 }
             }
 
-            // --- ADD MEMBER DIALOG ---
+            // add member
             if (showAddMemberDialog) {
-                // Filter friends: Only show friends NOT already in participants
                 val addableFriends = myFriends.filter { friend ->
                     participants.none { it.uid == friend.uid }
                 }
@@ -96,7 +100,7 @@ class ChatRoomActivity : ComponentActivity() {
                     text = {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             if (addableFriends.isEmpty()) {
-                                Text("All your friends are already in this group!", style = MaterialTheme.typography.bodySmall)
+                                Text("No friends available to add.", style = MaterialTheme.typography.bodySmall)
                             } else {
                                 LazyColumn(modifier = Modifier.heightIn(max = 250.dp)) {
                                     items(addableFriends) { friend ->
@@ -126,7 +130,7 @@ class ChatRoomActivity : ComponentActivity() {
                 )
             }
 
-            // --- EDIT GROUP NAME DIALOG ---
+            // edit group
             if (showEditNameDialog) {
                 AlertDialog(
                     onDismissRequest = { showEditNameDialog = false },
@@ -154,15 +158,16 @@ class ChatRoomActivity : ComponentActivity() {
                 )
             }
 
-            // --- GROUP SUMMARY DIALOG ---
             if (showGroupSummary && isGroup) {
                 AlertDialog(
                     onDismissRequest = { showGroupSummary = false },
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(text = currentGroupName, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { showEditNameDialog = true }) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit Name", tint = MaterialTheme.colorScheme.primary)
+                            if (isMeAdmin) {
+                                IconButton(onClick = { showEditNameDialog = true }) {
+                                    Icon(Icons.Default.Edit, "Edit Name", tint = MaterialTheme.colorScheme.primary)
+                                }
                             }
                         }
                     },
@@ -172,14 +177,13 @@ class ChatRoomActivity : ComponentActivity() {
                             val membersOnly = participants.filter { it.uid != leaderId }
 
                             LazyColumn(modifier = Modifier.heightIn(max = 300.dp)) {
-                                item { SectionHeader("Group Leader") }
+                                item { SectionHeader("Admin") }
                                 leader?.let {
                                     item { ParticipantRow(it, isMe = it.uid == myId, isLeader = true) }
                                 }
 
                                 item { Spacer(Modifier.height(16.dp)) }
 
-                                // UPDATED SECTION HEADER WITH ADD BUTTON
                                 item {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -187,11 +191,13 @@ class ChatRoomActivity : ComponentActivity() {
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         SectionHeader("Members")
-                                        IconButton(
-                                            onClick = { showAddMemberDialog = true },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(Icons.Default.AddCircle, null, tint = MaterialTheme.colorScheme.primary)
+                                        if (isMeAdmin) {
+                                            IconButton(
+                                                onClick = { showAddMemberDialog = true },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.AddCircle, null, tint = MaterialTheme.colorScheme.primary)
+                                            }
                                         }
                                     }
                                 }
@@ -223,12 +229,12 @@ class ChatRoomActivity : ComponentActivity() {
                 )
             }
 
-            // --- MAIN CHAT UI (DELETE DIALOG & SCAFFOLD) ---
+            // delete chat for 1-1
             if (showDeleteDialog) {
                 AlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
                     title = { Text("Delete Chat?") },
-                    text = { Text("This will hide the chat locally. Others will still see it.") },
+                    text = { Text("This will hide the chat locally.") },
                     confirmButton = {
                         TextButton(onClick = {
                             firebaseHelper.deleteChatForMe(chatId)
@@ -258,16 +264,25 @@ class ChatRoomActivity : ComponentActivity() {
                             }
                         },
                         navigationIcon = {
-                            IconButton(onClick = { finish() }) { Icon(Icons.Default.ArrowBack, null) }
+                            IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
                         },
                         actions = {
-                            IconButton(onClick = { showMenu = true }) { Icon(Icons.Default.MoreVert, null) }
-                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Delete Chat") },
-                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
-                                    onClick = { showMenu = false; showDeleteDialog = true }
-                                )
+                            if (!isGroup) {
+                                Box {
+                                    IconButton(onClick = { showMenu = true }) {
+                                        Icon(Icons.Default.MoreVert, null)
+                                    }
+                                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Delete Chat") },
+                                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                                            onClick = {
+                                                showMenu = false
+                                                showDeleteDialog = true
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     )
@@ -295,7 +310,7 @@ class ChatRoomActivity : ComponentActivity() {
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 shape = CircleShape,
                                 modifier = Modifier.size(48.dp)
-                            ) { Icon(Icons.Default.Send, null, tint = Color.White) }
+                            ) { Icon(Icons.AutoMirrored.Filled.Send, null, tint = Color.White) }
                         }
                     }
                 }
