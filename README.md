@@ -71,6 +71,8 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Social features added for communication
 - Text-to-Speech weather narration
 - UI and usability improvements
+- Geocoding & Reverse Geocoding (converting between place names and coordinates)
+
 
 ---
 
