@@ -103,7 +103,7 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - UI and navigation refinements
 - Designed app icon
 
-### Zhi Heng
+### Chang Zhi Heng
 - Implemented map-based weather search using Google Maps Compose
 - Enabled place name and postal code search
 - Added tap-to-select map interaction
@@ -126,6 +126,7 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - **Modern Notification Handling** – channels and runtime permissions
 - **Jetpack Compose** – reactive, state-driven UI
 - **Text-to-Speech** – accessibility enhancement
+- **Map SDK & Geocoding Services** – location-based interaction and search
 
 ---
 
