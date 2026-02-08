@@ -81,11 +81,19 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Weather detail widgets
 - Background notification alerts
 - Notification permission handling
+- Designed app icon
 
 ### Phua Yong Xiang
 - Authentication flow improvements
+- Stored preferences for "Remember Me"
 - User account management
+- Friends feature
+- Friend search
+- View favourite locations from friends
+- Chat room for 1-1 friends
+- Chat room for multiple people
 - UI and navigation refinements
+- Designed app icon
 
 ### Zhi Heng
 - Weather data presentation improvements
