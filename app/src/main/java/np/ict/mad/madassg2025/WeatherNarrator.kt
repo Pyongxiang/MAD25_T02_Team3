@@ -16,6 +16,7 @@ class WeatherNarrator(private val context: Context) {
 
     private var tts: TextToSpeech? = null
     private var isTtsReady = false
+    private var onSpeechComplete: (() -> Unit)? = null  // ← NEW: Callback for when speech finishes
 
     init {
         Log.d("WeatherNarrator", "Initializing WeatherNarrator")
@@ -45,10 +46,16 @@ class WeatherNarrator(private val context: Context) {
 
                         override fun onDone(utteranceId: String?) {
                             Log.d("WeatherNarrator", "Speech completed: $utteranceId")
+                            // ← NEW: Call the completion callback when speech finishes
+                            onSpeechComplete?.invoke()
+                            onSpeechComplete = null
                         }
 
                         override fun onError(utteranceId: String?) {
                             Log.e("WeatherNarrator", "Speech error: $utteranceId")
+                            // ← NEW: Also call completion on error
+                            onSpeechComplete?.invoke()
+                            onSpeechComplete = null
                         }
                     })
 
@@ -108,10 +115,11 @@ class WeatherNarrator(private val context: Context) {
             Log.d("WeatherNarrator", "Generated narrative: $narrative")
 
             if (narrative != null) {
+                // ← CHANGED: Store the completion callback
+                onSpeechComplete = onComplete
                 speak(narrative)
-                // Give TTS time to start speaking before calling onComplete
-                delay(500)
-                onComplete()
+                // ← REMOVED: Don't call onComplete() here anymore
+                // The UtteranceProgressListener will call it when speech actually finishes
             } else {
                 Log.e("WeatherNarrator", "Narrative generation returned null")
                 onError("Failed to generate weather narrative")
@@ -316,6 +324,9 @@ class WeatherNarrator(private val context: Context) {
     fun stop() {
         Log.d("WeatherNarrator", "stop() called")
         tts?.stop()
+        // ← NEW: Trigger completion callback when manually stopped
+        onSpeechComplete?.invoke()
+        onSpeechComplete = null
     }
 
     /**
@@ -335,5 +346,6 @@ class WeatherNarrator(private val context: Context) {
         tts?.stop()
         tts?.shutdown()
         tts = null
+        onSpeechComplete = null
     }
 }
