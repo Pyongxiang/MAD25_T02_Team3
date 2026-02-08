@@ -9,7 +9,7 @@ Developed strictly for **educational purposes only**.
 ## Team Members
 | Name | Student ID | GitHub Username |
 |------|------------|----------------|
-| Phua Yong Xiang | _(add)_ | Pyongxiang |
+| Phua Yong Xiang | S10258483F | Pyongxiang |
 | Evan Goh | _(add)_ | evangohh |
 | Zhi Heng | _(add)_ | Heng-Github1 |
 | Keagan Tan | _(add)_ | GITNumberx |
