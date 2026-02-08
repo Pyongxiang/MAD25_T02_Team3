@@ -1,4 +1,10 @@
-# 🌤️ Weather Buddies
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/fbebe7d2-d4da-4bcb-9332-5b7415e4821d" width="180" />
+</p>
+
+<h1 align="center">🌤️ Weather Buddies</h1>
+
+---
 
 ## Disclaimer
 This is a **student assignment project** for the **Kotlin App Development** module at **Ngee Ann Polytechnic**.  
@@ -71,8 +77,7 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Social features added for communication
 - Text-to-Speech weather narration
 - UI and usability improvements
-- Geocoding & Reverse Geocoding (converting between place names and coordinates)
-
+- Geocoding & Reverse Geocoding (place names ↔ coordinates)
 
 ---
 
@@ -91,25 +96,26 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Authentication flow improvements
 - Stored preferences for “Remember Me”
 - User account management
-- Friends feature
-- Friend search
+- Friends feature and friend search
 - View favourite locations from friends
-- Chat room for 1-to-1 friends
-- Chat room for multiple users
+- 1-to-1 and group chat rooms
 - UI and navigation refinements
 - Designed app icon
 
 ### Zhi Heng
-- Map-based weather search using Google Maps Compose
-- Location search via place name or postal code
-- Tap-to-select map interaction with reverse geocoding
-- Real-time weather retrieval for selected locations
-- Saving favourite locations to Firestore (user-specific)
-- Error handling for geocoding and API failures
-
+- Implemented map-based weather search using Google Maps Compose
+- Enabled place name and postal code search
+- Added tap-to-select map interaction
+- Integrated reverse geocoding
+- Connected map selection to real-time weather retrieval
+- Implemented saving locations to Firestore
+- Ensured user-specific data storage
+- Handled error states and API failures
 
 ### Keagan Tan
-- 
+- Forecast feature implementation
+- Forecast screen UI
+- Navigation and testing support
 
 ---
 
@@ -144,17 +150,5 @@ flowchart LR
   UI --> TTS["Text-to-Speech"]
 ```
 ---
-
 ## Screenshots Of User Interface
-<img width="1024" height="1024" alt="weather_buddies_logo" src="https://github.com/user-attachments/assets/fbebe7d2-d4da-4bcb-9332-5b7415e4821d" />
-<img width="396" height="788" alt="signup png" src="https://github.com/user-attachments/assets/8782a65f-2288-4e76-a5d7-561bf1793582" />
-<img width="783" height="775" alt="friends_search png" src="https://github.com/user-attachments/assets/081a856d-52d5-4303-b0b3-ec9da9d5ea71" />
-<img width="782" height="779" alt="Screenshot 2026-02-08 232152" src="https://github.com/user-attachments/assets/9fb738ce-1e23-4ffa-8e16-6148a1e3fd12" />
-<img width="393" height="780" alt="Screenshot 2026-02-08 232203" src="https://github.com/user-attachments/assets/5ed90dfa-cbe0-463d-bb06-2dd60b1859da" />
-<img width="388" height="770" alt="Screenshot 2026-02-08 232214" src="https://github.com/user-attachments/assets/cf1825e2-c10b-4e25-8d50-ef785c398081" />
-<img width="397" height="778" alt="Screenshot 2026-02-08 232226" src="https://github.com/user-attachments/assets/b9066e33-6b17-4357-bb17-f5b2f872c472" />
-<img width="391" height="774" alt="Screenshot 2026-02-08 232237" src="https://github.com/user-attachments/assets/5ae4b8bc-2268-4045-9ad4-372a4f8a8df8" />
-<img width="403" height="793" alt="Screenshot 2026-02-08 232247" src="https://github.com/user-attachments/assets/0f65e880-8793-4a9a-bba0-33c6fa9abbaa" />
-<img width="381" height="766" alt="Screenshot 2026-02-08 232306" src="https://github.com/user-attachments/assets/b0d95eab-a718-48a3-9500-5a3451ecc61f" />
-
---- 
+<p float="left"> <img src="https://github.com/user-attachments/assets/8782a65f-2288-4e76-a5d7-561bf1793582" width="260" /> <img src="https://github.com/user-attachments/assets/081a856d-52d5-4303-b0b3-ec9da9d5ea71" width="260" /> <img src="https://github.com/user-attachments/assets/9fb738ce-1e23-4ffa-8e16-6148a1e3fd12" width="260" /> </p> <p float="left"> <img src="https://github.com/user-attachments/assets/5ed90dfa-cbe0-463d-bb06-2dd60b1859da" width="260" /> <img src="https://github.com/user-attachments/assets/cf1825e2-c10b-4e25-8d50-ef785c398081" width="260" /> <img src="https://github.com/user-attachments/assets/b9066e33-6b17-4357-bb17-f5b2f872c472" width="260" /> </p> <p float="left"> <img src="https://github.com/user-attachments/assets/5ae4b8bc-2268-4045-9ad4-372a4f8a8df8" width="260" /> <img src="https://github.com/user-attachments/assets/0f65e880-8793-4a9a-bba0-33c6fa9abbaa" width="260" /> <img src="https://github.com/user-attachments/assets/b0d95eab-a718-48a3-9500-5a3451ecc61f" width="260" /> </p>
