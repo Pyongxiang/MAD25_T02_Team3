@@ -254,14 +254,7 @@ class ChatRoomActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable(enabled = isGroup) { showGroupSummary = true }
-                            ) {
-                                Text(text = currentGroupName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                Text(
-                                    text = if (isGroup) "Group Info" else "Online",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isGroup) MaterialTheme.colorScheme.primary else Color.Gray
-                                )
-                            }
+                            ) {}
                         },
                         navigationIcon = {
                             IconButton(onClick = { finish() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
