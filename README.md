@@ -10,7 +10,7 @@ Developed strictly for **educational purposes only**.
 | Name | Student ID | GitHub Username |
 |------|------------|----------------|
 | Phua Yong Xiang | S10258483F | Pyongxiang |
-| Evan Goh | _(add)_ | evangohh |
+| Evan Goh | S10258381G | evangohh |
 | Zhi Heng | _(add)_ | Heng-Github1 |
 | Keagan Tan | _(add)_ | GITNumberx |
 
@@ -85,25 +85,25 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 
 ### Phua Yong Xiang
 - Authentication flow improvements
-- Stored preferences for "Remember Me"
+- Stored preferences for “Remember Me”
 - User account management
 - Friends feature
 - Friend search
 - View favourite locations from friends
-- Chat room for 1-1 friends
-- Chat room for multiple people
+- Chat room for 1-to-1 friends
+- Chat room for multiple users
 - UI and navigation refinements
 - Designed app icon
 
 ### Zhi Heng
-- Weather data presentation improvements
-- UI consistency and layout fixes
-- API data handling support
+- Current weather data handling
+- Weather UI presentation
+- API integration support
 
 ### Keagan Tan
-- Forecast enhancements
-- Screen navigation and state handling
-- Testing and bug-fixing support
+- Forecast feature implementation
+- Forecast screen UI
+- Navigation and testing support
 
 ---
 
@@ -116,29 +116,23 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 
 ---
 
-## Problems Encountered & Solutions
-- Duplicate background tasks → solved using unique WorkManager jobs
-- Notification permission issues → handled with runtime permission checks
-- Location search failures → implemented fallback to nearest recognised area
-- UI spacing and layout issues → resolved through Compose restructuring
+## System Architecture Diagram
 
----
+```mermaid
+flowchart LR
+  User --> UI["Jetpack Compose UI"]
+  UI --> VM["State / ViewModel"]
+  VM --> Repo["WeatherRepository"]
 
-## Appendices (To Be Added)
-- Architecture diagrams
-- UI screenshots
-- Database / data flow diagrams
-- User guide
+  Repo --> OW["OpenWeather API"]
+  Repo --> Geo["Geocoding Services"]
+  Repo --> Rev["Reverse Geocoding"]
 
----
+  UI --> Auth["Firebase Authentication"]
+  Auth --> FS["Firestore (User Data)"]
 
-## Demonstration
-The application demonstration includes:
-- Login and authentication
-- Location-based weather retrieval
-- Forecast viewing
-- Favourite locations (cloud sync)
-- Background weather notifications
-- Text-to-Speech narration
+  VM --> Local["Local Storage"]
+  VM --> WM["WorkManager"]
+  WM --> Notif["Notification System"]
 
----
+  UI --> TTS["Text-to-Speech"]
