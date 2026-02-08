@@ -114,9 +114,7 @@ Stage 1 focused on implementing **core functionality**, navigation, and API inte
 - Handled error states and API failures
 
 ### Keagan Tan
-- Forecast feature implementation
-- Forecast screen UI
-- Navigation and testing support
+- 
 
 ---
 
